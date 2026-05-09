@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+
+<html lang="uk">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Melotrack Creator</title>
+        <link rel="stylesheet" href="/static/style.css">
+    </head>
+
+    <body>
+        <div id="page-login" class="page">
+            <h2>Login</h2>
+            <input type="password" id="input-password" placeholder="Password">
+            <button onclick="app.login()">Login</button>
+            <p id="error-login"></p>
+        </div>
+
+        <div id="page-admin" class="page">
+            <h2>Admin</h2>
+            <button id="btn-logout" onclick="app.logout()">Logout</button>
+            <button onclick="app.loadSessions()">Refresh</button>
+
+            <h3>Active sessions</h3>
+            <div>
+                <table border="1" width="100%">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>CreatedAt</th>
+                            <th>ExpiresAt</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-sessions">
+
+                    </tbody>
+                </table>
+            
+            </div>
+        </div>
+    
+        <script src="/static/app.js"></script>
+    </body>
+</html>
