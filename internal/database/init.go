@@ -18,7 +18,17 @@ func InitDB(path string) (*gorm.DB, error) {
 		return nil, fmt.Errorf("initDB(): gorm.Open() Failed to open DB: %v", err)
 	}
 
-	err = db.AutoMigrate(&models.Role{}, &models.User{})
+	err = db.AutoMigrate(
+		&models.Role{},
+		&models.User{},
+		&models.Media{},
+		&models.Project{},
+		&models.Category{},
+		&models.Pager{},
+		&models.QuizItem{},
+		&models.Answer{},
+	)
+
 	if err != nil {
 		return nil, fmt.Errorf("initDB(): db.AutoMigrate() Failed to migrate: %v", err)
 	}

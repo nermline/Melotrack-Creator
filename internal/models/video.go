@@ -1,10 +1,14 @@
 package models
 
 type Video struct {
-	YouTubeURL string  `gorm:"not null"`
-	StartTime  float64 `gorm:"not null;"`
-	EndTime    float64 `gorm:"not null"`
-	Volume     float64 `gorm:"default:1.0"`
+	YouTubeURL string
+
+	MediaID *uint `gorm:"index"`
+	Media   Media `gorm:"foreignKey:MediaID"`
+
+	StartTime float64
+	EndTime   float64
+	Volume    float64 `gorm:"default:1.0"`
 
 	CropX      int
 	CropY      int
