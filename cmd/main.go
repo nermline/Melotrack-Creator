@@ -5,52 +5,51 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	melotrackcreator "github.com/nermline/Melotrack-Creator/pkg"
-
-	_ "modernc.org/sqlite"
+	"github.com/nermline/Melotrack-Creator/internal/auth"
+	"github.com/nermline/Melotrack-Creator/internal/config"
+	"github.com/nermline/Melotrack-Creator/internal/database"
 )
 
-func testHandler() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "authorized",
-		})
-	}
-}
-
 func main() {
-	db, err := melotrackcreator.InitDB()
+	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatalf("[FATAL] main: %v", err)
+		log.Fatalf("main(): %v", err)
 	}
 
-	if err = melotrackcreator.SetupPassword(db); err != nil {
-		log.Fatalf("[FATAL] main: %v", err)
+	db, err := database.InitDB(cfg.DBLocation)
+	if err != nil {
+		log.Fatalf("main(): %v", err)
 	}
 
-	secret, err := melotrackcreator.GetJWTSecret()
+	authMiddleware, err := auth.SetupAuthMiddleware(db, cfg.JWTSecret)
 	if err != nil {
-		log.Fatalf("[FATAL] main: %v", err)
+		log.Fatalf("main(): %v", err)
 	}
 
 	r := gin.Default()
 
-	r.Static("/static", "./static")
-	r.GET("/admin", func(c *gin.Context) { c.File("./static/index.html") })
+	r.POST("/login", authMiddleware.LoginHandler)
+	r.GET("/refresh", authMiddleware.RefreshHandler)
 
-	r.GET("/login/status", melotrackcreator.LoginStatusHandler(db))
-	r.POST("/login", melotrackcreator.LoginHandler(db, secret))
-	r.POST("/refresh", melotrackcreator.RefreshHandler(db, secret))
+	api := r.Group("/api")
 
-	authGroup := r.Group("/")
-	authGroup.Use(melotrackcreator.AuthMiddleware(db, secret))
+	api.Use(authMiddleware.MiddlewareFunc())
 	{
-		authGroup.GET("/admin/sessions", melotrackcreator.ListSessionsHandler(db))
-		authGroup.POST("/admin/sessions/delete/:id", melotrackcreator.DeleteSessionHandler(db))
+		api.GET("/profile", func(c *gin.Context) {
+			user, _ := c.Get("id")
+			c.JSON(http.StatusOK, gin.H{
+				"message": "Authorized",
+				"user":    user,
+			})
+		})
 
-		authGroup.POST("/logout", melotrackcreator.LogoutHandler(db))
-		authGroup.GET("/test", testHandler())
+		// ТУТ БУДЕ ВАША БІЗНЕС-ЛОГІКА (Проєкти, Відео, FFMPEG)
+		// api.POST("/projects", handlers.CreateProject(db))
+
+		api.POST("/logout", authMiddleware.LogoutHandler)
 	}
 
-	r.Run()
+	if err := r.Run(":8080"); err != nil {
+		log.Fatalf("main(): %v", err)
+	}
 }
