@@ -24,7 +24,6 @@ func InitDB(path string) (*gorm.DB, error) {
 		&models.Media{},
 		&models.Project{},
 		&models.Category{},
-		&models.Pager{},
 		&models.QuizItem{},
 		&models.Answer{},
 	)
