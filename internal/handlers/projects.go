@@ -16,28 +16,20 @@ type ProjectSummary struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-type CreateProjectInput struct {
+type ProjectInput struct {
 	Title string `json:"title" binding:"required"`
 }
 
 func GetProjects(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userClaims, exists := c.Get("id")
-		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		userID, ok := getUserID(c)
+		if !ok {
 			return
 		}
 
-		claims := userClaims.(map[string]interface{})
-		userID := uint(claims["id"].(float64))
-
 		var summaries []ProjectSummary
-		query := db.Model(&models.Project{})
 
-		query = query.Where("user_id = ?", userID)
-
-		err := query.Select("id", "title", "created_at").Find(&summaries).Error
-		if err != nil {
+		if err := db.Model(&models.Project{}).Where("user_id = ?", userID).Select("id", "title", "created_at").Find(&summaries).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 			return
 		}
@@ -48,25 +40,57 @@ func GetProjects(db *gorm.DB) gin.HandlerFunc {
 
 func GetProjectByID(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		userID, ok := getUserID(c)
+		if !ok {
+			return
+		}
+
+		projectID := c.Param("id")
+
+		var project models.Project
+
+		err := db.
+			Preload("Categories").
+			Preload("Categories.Items").
+			Preload("Categories.Items.Answer").
+			Where("id = ? AND user_id = ?", projectID, userID).
+			First(&project).Error
+
+		if err != nil {
+			if err == gorm.ErrRecordNotFound {
+				c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			return
+		}
+
+		if project.Categories == nil {
+			project.Categories = make([]models.Category, 0)
+		} else {
+			for i := range project.Categories {
+				if project.Categories[i].Items == nil {
+					project.Categories[i].Items = make([]models.QuizItem, 0)
+				}
+			}
+		}
+
+		c.JSON(http.StatusOK, project)
 	}
 }
 
 func CreateProject(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var input CreateProjectInput
+		var input ProjectInput
 		if err := c.ShouldBindJSON(&input); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "title is essential"})
 			return
 		}
 
-		userClaims, exists := c.Get("id")
-		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		userID, ok := getUserID(c)
+		if !ok {
 			return
 		}
-
-		claims := userClaims.(map[string]interface{})
-		userID := uint(claims["id"].(float64))
 
 		project := models.Project{
 			Title:  input.Title,
@@ -74,10 +98,12 @@ func CreateProject(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		if err := db.Create(&project).Error; err != nil {
-			if strings.Contains(err.Error(), "UNIQUE") || strings.Contains(err.Error(), "duplicate") {
+			if isUniqueErr(err) {
 				c.JSON(http.StatusConflict, gin.H{"error": "title is already taken"})
 				return
 			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			return
 		}
 
 		if project.Categories == nil {
@@ -90,12 +116,84 @@ func CreateProject(db *gorm.DB) gin.HandlerFunc {
 
 func UpdateProject(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		var input ProjectInput
+		if err := c.ShouldBindJSON(&input); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "title is essential"})
+			return
+		}
 
+		userID, ok := getUserID(c)
+		if !ok {
+			return
+		}
+
+		projectID := c.Param("id")
+
+		var project models.Project
+
+		if err := db.Where("id = ? AND user_id = ?", projectID, userID).First(&project).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			return
+		}
+
+		project.Title = input.Title
+
+		if err := db.Save(&project).Error; err != nil {
+			if isUniqueErr(err) {
+				c.JSON(http.StatusConflict, gin.H{"error": "title is already taken"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update project"})
+			return
+		}
+
+		if project.Categories == nil {
+			project.Categories = make([]models.Category, 0)
+		}
+
+		c.JSON(http.StatusOK, project)
 	}
 }
 
 func DeleteProject(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		userID, ok := getUserID(c)
+		if !ok {
+			return
+		}
 
+		projectID := c.Param("id")
+
+		result := db.Unscoped().Where("id = ? AND user_id = ?", projectID, userID).Delete(&models.Project{})
+
+		if result.Error != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete project"})
+			return
+		}
+
+		if result.RowsAffected == 0 {
+			c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "project deleted successfully"})
 	}
+}
+
+func getUserID(c *gin.Context) (uint, bool) {
+	userClaims, exists := c.Get("id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return 0, false
+	}
+	claims := userClaims.(map[string]interface{})
+	return uint(claims["id"].(float64)), true
+}
+
+func isUniqueErr(err error) bool {
+	return strings.Contains(err.Error(), "UNIQUE") || strings.Contains(err.Error(), "duplicate")
 }

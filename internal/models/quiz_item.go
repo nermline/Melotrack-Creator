@@ -7,5 +7,5 @@ type QuizItem struct {
 	CategoryID uint   `gorm:"not null"`
 	Position   int    `gorm:"not null;default:0"`
 	Answer     Answer `gorm:"foreignKey:QuizItemID;constraint:OnDelete:CASCADE;"`
-	Video
+	Video      Video  `gorm:"embedded"`
 }
