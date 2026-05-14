@@ -7,5 +7,5 @@ type Category struct {
 	ProjectID uint       `gorm:"uniqueIndex:idx_project_title;not null"`
 	Title     string     `gorm:"uniqueIndex:idx_project_title;not null"`
 	Position  int        `gorm:"not null;default:0"`
-	Items     []QuizItem `gorm:"foreignKey:CategoryID;constraint:OnDelete:CASCADE;" json:"items,omitempty"`
+	Items     []QuizItem `gorm:"foreignKey:CategoryID;constraint:OnDelete:CASCADE;"`
 }

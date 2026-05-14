@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -16,10 +17,6 @@ type ProjectSummary struct {
 }
 
 type CreateProjectInput struct {
-	Title string `json:"title" binding:"required"`
-}
-
-type UpdateProjectInput struct {
 	Title string `json:"title" binding:"required"`
 }
 
@@ -56,6 +53,38 @@ func GetProjectByID(db *gorm.DB) gin.HandlerFunc {
 
 func CreateProject(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		var input CreateProjectInput
+		if err := c.ShouldBindJSON(&input); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "title is essential"})
+			return
+		}
+
+		userClaims, exists := c.Get("id")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		claims := userClaims.(map[string]interface{})
+		userID := uint(claims["id"].(float64))
+
+		project := models.Project{
+			Title:  input.Title,
+			UserID: userID,
+		}
+
+		if err := db.Create(&project).Error; err != nil {
+			if strings.Contains(err.Error(), "UNIQUE") || strings.Contains(err.Error(), "duplicate") {
+				c.JSON(http.StatusConflict, gin.H{"error": "title is already taken"})
+				return
+			}
+		}
+
+		if project.Categories == nil {
+			project.Categories = make([]models.Category, 0)
+		}
+
+		c.JSON(http.StatusCreated, project)
 	}
 }
 
