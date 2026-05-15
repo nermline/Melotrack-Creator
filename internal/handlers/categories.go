@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -11,6 +12,11 @@ import (
 
 type CreateCategoryInput struct {
 	Title string `json:"title" binding:"required"`
+}
+
+type UpdateCategoryInput struct {
+	Title    *string `json:"title"`
+	Position *int    `json:"position"`
 }
 
 func GetCategories(db *gorm.DB) gin.HandlerFunc {
@@ -103,7 +109,86 @@ func CreateCategory(db *gorm.DB) gin.HandlerFunc {
 
 func UpdateCategory(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		var input UpdateCategoryInput
+		if err := c.ShouldBindJSON(&input); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input data"})
+			return
+		}
 
+		userID, ok := getUserID(c)
+		if !ok {
+			return
+		}
+
+		projectID := c.Param("id")
+		categoryID := c.Param("cid")
+
+		if !verifyProjectOwnership(c, db, projectID, userID) {
+			return
+		}
+
+		var updatedCategory models.Category
+		err := db.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Where("id = ? AND project_id = ?", categoryID, projectID).
+				First(&updatedCategory).Error; err != nil {
+				return err
+			}
+
+			if input.Title != nil {
+				updatedCategory.Title = *input.Title
+			}
+
+			if input.Position != nil {
+				newPos := *input.Position
+				oldPos := updatedCategory.Position
+
+				if newPos != oldPos {
+					var count int64
+					tx.Model(&models.Category{}).Where("project_id = ?", updatedCategory.ProjectID).Count(&count)
+					maxPos := int(count) - 1
+
+					if newPos > maxPos {
+						newPos = maxPos
+					}
+					if newPos < 0 {
+						newPos = 0
+					}
+
+					if newPos > oldPos {
+						tx.Model(&models.Category{}).
+							Where("project_id = ? AND position > ? AND position <= ?", updatedCategory.ProjectID, oldPos, newPos).
+							UpdateColumn("position", gorm.Expr("position - 1"))
+					} else if newPos < oldPos {
+						tx.Model(&models.Category{}).
+							Where("project_id = ? AND position >= ? AND position < ?", updatedCategory.ProjectID, newPos, oldPos).
+							UpdateColumn("position", gorm.Expr("position + 1"))
+					}
+
+					updatedCategory.Position = newPos
+				}
+			}
+
+			if err := tx.Save(&updatedCategory).Error; err != nil {
+				return err
+			}
+
+			return nil
+		})
+
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "category not found"})
+				return
+			}
+			if isUniqueErr(err) {
+				c.JSON(http.StatusConflict, gin.H{"error": "category title must be unique within the project"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			return
+		}
+
+		c.JSON(http.StatusOK, updatedCategory)
 	}
 }
 
