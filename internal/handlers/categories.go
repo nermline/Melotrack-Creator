@@ -194,7 +194,52 @@ func UpdateCategory(db *gorm.DB) gin.HandlerFunc {
 
 func DeleteCategory(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		userID, ok := getUserID(c)
+		if !ok {
+			return
+		}
+		projectID := c.Param("id")
+		categoryID := c.Param("cid")
 
+		if !verifyProjectOwnership(c, db, projectID, userID) {
+			return
+		}
+
+		err := db.Transaction(func(tx *gorm.DB) error {
+			var category models.Category
+
+			if err := tx.Where("id = ? AND project_id = ?", categoryID, projectID).
+				First(&category).Error; err != nil {
+				return err
+			}
+
+			oldPos := category.Position
+			projectID := category.ProjectID
+
+			if err := tx.Unscoped().Delete(&category).Error; err != nil {
+				return err
+			}
+
+			if err := tx.Model(&models.Category{}).
+				Where("project_id = ? AND position > ?", projectID, oldPos).
+				UpdateColumn("position", gorm.Expr("position - 1")).Error; err != nil {
+				return err
+			}
+
+			return nil
+		})
+
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "category not found"})
+				return
+			}
+
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete category"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "category deleted successfully"})
 	}
 }
 

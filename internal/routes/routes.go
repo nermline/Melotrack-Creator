@@ -24,7 +24,7 @@ func Setup(r *gin.Engine, db *gorm.DB, authMiddleware *jwt.GinJWTMiddleware) {
 		api.GET("/projects/:id/categories", handlers.GetCategories(db))
 		api.POST("/projects/:id/categories", handlers.CreateCategory(db))
 		api.PUT("/projects/:id/categories/:cid", handlers.UpdateCategory(db))
-		api.DELETE("/categories/:id", handlers.DeleteCategory(db))
+		api.DELETE("/projects/:id/categories/:cid", handlers.DeleteCategory(db))
 
 		api.GET("/categories/:id/items", handlers.GetQuizItems(db))
 		api.POST("/categories/:id/items", handlers.CreateQuizItem(db))
