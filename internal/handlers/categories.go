@@ -26,7 +26,7 @@ func GetCategories(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		projectID := c.Param("id")
+		projectID := c.Param("pid")
 
 		if !verifyProjectOwnership(c, db, projectID, userID) {
 			return
@@ -66,7 +66,7 @@ func CreateCategory(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		projectIDStr := c.Param("id")
+		projectIDStr := c.Param("pid")
 
 		if !verifyProjectOwnership(c, db, projectIDStr, userID) {
 			return
@@ -120,7 +120,7 @@ func UpdateCategory(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		projectID := c.Param("id")
+		projectID := c.Param("pid")
 		categoryID := c.Param("cid")
 
 		if !verifyProjectOwnership(c, db, projectID, userID) {
@@ -198,7 +198,7 @@ func DeleteCategory(db *gorm.DB) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		projectID := c.Param("id")
+		projectID := c.Param("pid")
 		categoryID := c.Param("cid")
 
 		if !verifyProjectOwnership(c, db, projectID, userID) {

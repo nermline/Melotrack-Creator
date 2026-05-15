@@ -16,20 +16,20 @@ func Setup(r *gin.Engine, db *gorm.DB, authMiddleware *jwt.GinJWTMiddleware) {
 	api.Use(authMiddleware.MiddlewareFunc())
 	{
 		api.GET("/projects", handlers.GetProjects(db))
-		api.GET("/projects/:id", handlers.GetProjectByID(db))
+		api.GET("/projects/:pid", handlers.GetProjectByID(db))
 		api.POST("/projects", handlers.CreateProject(db))
-		api.PUT("/projects/:id", handlers.UpdateProject(db))
-		api.DELETE("/projects/:id", handlers.DeleteProject(db))
+		api.PUT("/projects/:pid", handlers.UpdateProject(db))
+		api.DELETE("/projects/:pid", handlers.DeleteProject(db))
 
-		api.GET("/projects/:id/categories", handlers.GetCategories(db))
-		api.POST("/projects/:id/categories", handlers.CreateCategory(db))
-		api.PUT("/projects/:id/categories/:cid", handlers.UpdateCategory(db))
-		api.DELETE("/projects/:id/categories/:cid", handlers.DeleteCategory(db))
+		api.GET("/projects/:pid/categories", handlers.GetCategories(db))
+		api.POST("/projects/:pid/categories", handlers.CreateCategory(db))
+		api.PUT("/projects/:pid/categories/:cid", handlers.UpdateCategory(db))
+		api.DELETE("/projects/:pid/categories/:cid", handlers.DeleteCategory(db))
 
-		api.GET("/categories/:id/items", handlers.GetQuizItems(db))
-		api.POST("/categories/:id/items", handlers.CreateQuizItem(db))
-		api.PUT("/items/:id", handlers.UpdateQuizItem(db))
-		api.DELETE("/items/:id", handlers.DeleteQuizItem(db))
+		api.GET("/projects/:pid/categories/:cid/items", handlers.GetQuizItems(db))
+		api.POST("/projects/:pid/categories/:cid/items", handlers.CreateQuizItem(db))
+		api.PUT("/projects/:pid/categories/:cid/items/:iid", handlers.UpdateQuizItem(db))
+		api.DELETE("/projects/:pid/categories/:cid/items/:iid", handlers.DeleteQuizItem(db))
 
 		api.POST("/logout", authMiddleware.LogoutHandler)
 	}

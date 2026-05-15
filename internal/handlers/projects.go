@@ -45,7 +45,7 @@ func GetProjectByID(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		projectID := c.Param("id")
+		projectID := c.Param("pid")
 
 		var project models.Project
 
@@ -127,7 +127,7 @@ func UpdateProject(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		projectID := c.Param("id")
+		projectID := c.Param("pid")
 
 		var project models.Project
 
@@ -166,7 +166,7 @@ func DeleteProject(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		projectID := c.Param("id")
+		projectID := c.Param("pid")
 
 		result := db.Unscoped().Where("id = ? AND user_id = ?", projectID, userID).Delete(&models.Project{})
 
