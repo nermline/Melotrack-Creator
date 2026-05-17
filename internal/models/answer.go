@@ -6,7 +6,7 @@ type Answer struct {
 	gorm.Model
 	QuizItemID      uint `gorm:"not null"`
 	Title           string
-	ImagePath       string
+	ImagePath       string `json:"-"`
 	ImageCropX      int
 	ImageCropY      int
 	ImageCropWidth  int
