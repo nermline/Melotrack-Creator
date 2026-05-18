@@ -30,14 +30,16 @@ type AnswerInput struct {
 }
 
 type CreateQuizItemInput struct {
-	Video  VideoInput  `json:"video" binding:"required"`
-	Answer AnswerInput `json:"answer" binding:"required"`
+	ShowVideo bool        `json:"show_video"`
+	Video     VideoInput  `json:"video" binding:"required"`
+	Answer    AnswerInput `json:"answer" binding:"required"`
 }
 
 type UpdateQuizItemInput struct {
-	Position *int         `json:"position"`
-	Video    *VideoInput  `json:"video"`
-	Answer   *AnswerInput `json:"answer"`
+	ShowVideo bool         `json:"show_video"`
+	Position  *int         `json:"position"`
+	Video     *VideoInput  `json:"video"`
+	Answer    *AnswerInput `json:"answer"`
 }
 
 func verifyCategoryOwnership(c *gin.Context, db *gorm.DB, projectID string, categoryID string, userID uint) bool {
@@ -129,6 +131,7 @@ func CreateQuizItem(db *gorm.DB) gin.HandlerFunc {
 				ImageCropWidth:  input.Answer.ImageCropWidth,
 				ImageCropHeight: input.Answer.ImageCropHeight,
 			},
+			ShowVideo: input.ShowVideo,
 		}
 
 		if err := db.Create(&item).Error; err != nil {
