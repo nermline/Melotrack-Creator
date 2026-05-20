@@ -53,6 +53,7 @@ func GetProjectByID(db *gorm.DB) gin.HandlerFunc {
 			Preload("Categories").
 			Preload("Categories.Items").
 			Preload("Categories.Items.Answer").
+			Preload("Categories.Items.Media").
 			Where("id = ? AND user_id = ?", projectID, userID).
 			First(&project).Error
 
@@ -184,14 +185,28 @@ func DeleteProject(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+// getUserID extracts the authenticated user's ID from the JWT claims stored in the context.
+// Returns (0, false) and writes an error response if the claim is missing or has an unexpected type.
 func getUserID(c *gin.Context) (uint, bool) {
 	userClaims, exists := c.Get("id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return 0, false
 	}
-	claims := userClaims.(map[string]interface{})
-	return uint(claims["id"].(float64)), true
+
+	claims, ok := userClaims.(map[string]interface{})
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return 0, false
+	}
+
+	idFloat, ok := claims["id"].(float64)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return 0, false
+	}
+
+	return uint(idFloat), true
 }
 
 func isUniqueErr(err error) bool {

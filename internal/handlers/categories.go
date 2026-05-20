@@ -78,16 +78,7 @@ func CreateCategory(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		var maxPosition int
-		db.Model(&models.Category{}).
-			Where("project_id = ?", projectID).
-			Select("COALESCE(MAX(position), -1)").
-			Scan(&maxPosition)
-
-		category := models.Category{
-			ProjectID: uint(projectID),
-			Title:     input.Title,
-		}
+		var category models.Category
 
 		err = db.Transaction(func(tx *gorm.DB) error {
 			var maxPosition int
@@ -96,12 +87,16 @@ func CreateCategory(db *gorm.DB) gin.HandlerFunc {
 				Select("COALESCE(MAX(position), -1)").
 				Scan(&maxPosition)
 
-			category.Position = maxPosition + 1
+			category = models.Category{
+				ProjectID: uint(projectID),
+				Title:     input.Title,
+				Position:  maxPosition + 1,
+			}
 
 			return tx.Create(&category).Error
 		})
 
-		if err := db.Create(&category).Error; err != nil {
+		if err != nil {
 			if isUniqueErr(err) {
 				c.JSON(http.StatusConflict, gin.H{"error": "category title must be unique within the project"})
 				return

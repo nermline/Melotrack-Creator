@@ -63,10 +63,29 @@ func identityHandler() func(c *gin.Context) any {
 	}
 }
 
+// authorizer enforces role-based access:
+//   - admin, editor — full access
+//   - operator      — read-only (GET requests only)
 func authorizer() func(c *gin.Context, data any) bool {
 	return func(c *gin.Context, data any) bool {
-		// Allows anyone with a valid token.
-		return true
+		claims, ok := data.(map[string]interface{})
+		if !ok {
+			return false
+		}
+
+		role, ok := claims["role"].(string)
+		if !ok {
+			return false
+		}
+
+		switch role {
+		case "admin", "editor":
+			return true
+		case "operator":
+			return c.Request.Method == http.MethodGet
+		default:
+			return false
+		}
 	}
 }
 
@@ -90,7 +109,7 @@ func initParams(db *gorm.DB, JWTSecret string) *jwt.GinJWTMiddleware {
 	return &jwt.GinJWTMiddleware{
 		Realm:       "melotrack",
 		Key:         []byte(JWTSecret),
-		Timeout:     5 * time.Minute,
+		Timeout:     30 * time.Minute,
 		MaxRefresh:  2 * time.Hour,
 		IdentityKey: identityKey,
 		PayloadFunc: payloadFunc(),

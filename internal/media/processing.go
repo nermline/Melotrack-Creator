@@ -40,7 +40,7 @@ func StartVideoProcessingWorker(ctx context.Context, db *gorm.DB, itemID uint, u
 		err := db.Where("you_tube_id = ?", ytID).First(&mediaFile).Error
 
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			rawPath, _, err := DownloadRawVideo(item.Video.YouTubeURL)
+			rawPath, _, err := DownloadRawVideo(ctx, item.Video.YouTubeURL)
 			if err != nil {
 				failProcessing(err)
 				return
@@ -95,7 +95,7 @@ func StartVideoProcessingWorker(ctx context.Context, db *gorm.DB, itemID uint, u
 
 		db.Model(&item).Updates(map[string]interface{}{
 			"processing_status": "ready",
-			"clip_file_path":    webURL,
+			"ready_file_path":   webURL,
 		})
 	} else {
 		_ = os.Remove(tmpClipPath)

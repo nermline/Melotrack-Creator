@@ -16,7 +16,7 @@ import (
 var activeWorkers sync.Map
 
 type VideoInput struct {
-	YouTubeURL string  `json:"youtube_url"`
+	YoutubeURL string  `json:"youtube_url"`
 	StartTime  float64 `json:"start_time"`
 	EndTime    float64 `json:"end_time"`
 	Volume     float64 `json:"volume"`
@@ -27,7 +27,7 @@ type VideoInput struct {
 }
 
 type UpdateVideoInput struct {
-	YouTubeURL *string  `json:"youtube_url"`
+	YoutubeURL *string  `json:"youtube_url"`
 	StartTime  *float64 `json:"start_time"`
 	EndTime    *float64 `json:"end_time"`
 	Volume     *float64 `json:"volume"`
@@ -94,7 +94,7 @@ func GetQuizItems(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var items []models.QuizItem
-		if err := db.Preload("Answer").Where("category_id = ?", categoryID).Order("position ASC").Find(&items).Error; err != nil {
+		if err := db.Preload("Answer").Preload("Media").Where("category_id = ?", categoryID).Order("position ASC").Find(&items).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 			return
 		}
@@ -129,37 +129,45 @@ func CreateQuizItem(db *gorm.DB) gin.HandlerFunc {
 
 		categoryID, _ := strconv.ParseUint(categoryIDStr, 10, 32)
 
-		var maxPosition int
-		db.Model(&models.QuizItem{}).
-			Where("category_id = ?", categoryID).
-			Select("COALESCE(MAX(position), -1)").
-			Scan(&maxPosition)
+		var item models.QuizItem
 
-		item := models.QuizItem{
-			CategoryID: uint(categoryID),
-			Position:   maxPosition + 1,
-			Video: models.Video{
-				YouTubeURL:       input.Video.YouTubeURL,
-				StartTime:        input.Video.StartTime,
-				EndTime:          input.Video.EndTime,
-				Volume:           input.Video.Volume,
-				CropX:            input.Video.CropX,
-				CropY:            input.Video.CropY,
-				CropWidth:        input.Video.CropWidth,
-				CropHeight:       input.Video.CropHeight,
-				ProcessingStatus: "pending",
-			},
-			Answer: models.Answer{
-				Title:           input.Answer.Title,
-				ImageCropX:      input.Answer.ImageCropX,
-				ImageCropY:      input.Answer.ImageCropY,
-				ImageCropWidth:  input.Answer.ImageCropWidth,
-				ImageCropHeight: input.Answer.ImageCropHeight,
-			},
-			ShowVideo: input.ShowVideo,
-		}
+		// Wrapped in a transaction to prevent a race condition where two concurrent
+		// requests could read the same MAX(position) and create items with duplicate positions.
+		err := db.Transaction(func(tx *gorm.DB) error {
+			var maxPosition int
+			tx.Model(&models.QuizItem{}).
+				Where("category_id = ?", categoryID).
+				Select("COALESCE(MAX(position), -1)").
+				Scan(&maxPosition)
 
-		if err := db.Create(&item).Error; err != nil {
+			item = models.QuizItem{
+				CategoryID: uint(categoryID),
+				Position:   maxPosition + 1,
+				Video: models.Video{
+					YouTubeURL:       input.Video.YoutubeURL,
+					StartTime:        input.Video.StartTime,
+					EndTime:          input.Video.EndTime,
+					Volume:           input.Video.Volume,
+					CropX:            input.Video.CropX,
+					CropY:            input.Video.CropY,
+					CropWidth:        input.Video.CropWidth,
+					CropHeight:       input.Video.CropHeight,
+					ProcessingStatus: "pending",
+				},
+				Answer: models.Answer{
+					Title:           input.Answer.Title,
+					ImageCropX:      input.Answer.ImageCropX,
+					ImageCropY:      input.Answer.ImageCropY,
+					ImageCropWidth:  input.Answer.ImageCropWidth,
+					ImageCropHeight: input.Answer.ImageCropHeight,
+				},
+				ShowVideo: input.ShowVideo,
+			}
+
+			return tx.Create(&item).Error
+		})
+
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create item"})
 			return
 		}
@@ -213,9 +221,9 @@ func UpdateQuizItem(db *gorm.DB) gin.HandlerFunc {
 			}
 
 			if input.Video != nil {
-				if input.Video.YouTubeURL != nil && updatedItem.Video.YouTubeURL != *input.Video.YouTubeURL {
+				if input.Video.YoutubeURL != nil && updatedItem.Video.YouTubeURL != *input.Video.YoutubeURL {
 					urlChanged = true
-					updatedItem.Video.YouTubeURL = *input.Video.YouTubeURL
+					updatedItem.Video.YouTubeURL = *input.Video.YoutubeURL
 				}
 
 				if input.Video.StartTime != nil && updatedItem.Video.StartTime != *input.Video.StartTime {

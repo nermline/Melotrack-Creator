@@ -8,8 +8,9 @@ import (
 )
 
 type Config struct {
-	JWTSecret  string `envconfig:"JWT_SECRET" required:"true"`
-	DBLocation string `envconfig:"database" required:"true"`
+	JWTSecret     string `envconfig:"JWT_SECRET" required:"true"`
+	DBLocation    string `envconfig:"DATABASE" required:"true"`
+	AdminPassword string `envconfig:"ADMIN_PASSWORD" required:"true"`
 }
 
 func LoadConfig() (*Config, error) {
