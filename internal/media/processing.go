@@ -117,11 +117,13 @@ func RunFFmpegCropAndTrim(ctx context.Context, rawPath, outPath string, v models
 	if v.CropWidth > 0 && v.CropHeight > 0 {
 		vfArg := fmt.Sprintf("crop=%d:%d:%d:%d", v.CropWidth, v.CropHeight, v.CropX, v.CropY)
 		args = append(args, "-vf", vfArg)
+		args = append(args, "-c:v", "libx264", "-crf", "28", "-preset", "fast")
+	} else {
+		args = append(args, "-c:v", "copy")
 	}
 
 	args = append(args, "-af", fmt.Sprintf("volume=%f", v.Volume))
-
-	args = append(args, "-c:v", "libx264", "-c:a", "aac", outPath)
+	args = append(args, "-c:a", "aac", outPath)
 
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 
