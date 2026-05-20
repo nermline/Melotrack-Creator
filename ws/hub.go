@@ -1,63 +1,66 @@
 package ws
 
 import (
+	"net/http"
 	"sync"
 
 	"github.com/gorilla/websocket"
 )
 
-// Client - це одне WebSocket з'єднання (екран або пульт)
-type Client struct {
-	Conn *websocket.Conn
-	Role string // "screen" або "remote"
-	Send chan []byte
+var Upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin: func(r *http.Request) bool {
+		return true // Для розробки. В продакшені краще вказати конкретні домени.
+	},
 }
 
-// Session - це одна активна презентація
-type Session struct {
-	ProjectID string
-	State     GameState
-	Clients   map[*Client]bool
-	mu        sync.RWMutex
-}
-
-// Hub керує всіма активними сесіями
+// Hub керує всіма активними сесіями та кімнатами
 type Hub struct {
-	Sessions map[string]*Session
-	mu       sync.RWMutex
+	GameSessions map[string]*GameSession
+	EditorRooms  map[string]*EditorRoom
+	mu           sync.RWMutex
 }
 
 func NewHub() *Hub {
 	return &Hub{
-		Sessions: make(map[string]*Session),
+		GameSessions: make(map[string]*GameSession),
+		EditorRooms:  make(map[string]*EditorRoom),
 	}
 }
 
-// GetOrCreateSession повертає існуючу кімнату для проєкту або створює нову
-func (h *Hub) GetOrCreateSession(projectID string) *Session {
+func (h *Hub) GetOrCreateGameSession(projectID string) *GameSession {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	if session, exists := h.Sessions[projectID]; exists {
+	if session, exists := h.GameSessions[projectID]; exists {
 		return session
 	}
 
-	session := &Session{
+	session := &GameSession{
 		ProjectID: projectID,
 		State: GameState{
 			ProjectID: projectID,
-			Status:    "welcome", // Початковий стан за замовчуванням
+			Status:    "welcome",
 		},
-		Clients: make(map[*Client]bool),
+		Clients: make(map[*GameClient]bool),
 	}
-	h.Sessions[projectID] = session
+	h.GameSessions[projectID] = session
 	return session
 }
 
-// BroadcastState розсилає поточний стан усім підключеним клієнтам у сесії
-func (s *Session) BroadcastState() {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+func (h *Hub) GetOrCreateEditorRoom(categoryID string) *EditorRoom {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 
-	// Тут ми будемо формувати OutgoingMessage та надсилати його в канал кожного клієнта
+	if room, exists := h.EditorRooms[categoryID]; exists {
+		return room
+	}
+
+	room := &EditorRoom{
+		CategoryID: categoryID,
+		Clients:    make(map[*EditorClient]bool),
+	}
+	h.EditorRooms[categoryID] = room
+	return room
 }

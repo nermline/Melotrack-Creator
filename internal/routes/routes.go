@@ -6,18 +6,25 @@ import (
 	jwt "github.com/appleboy/gin-jwt/v3"
 	"github.com/gin-gonic/gin"
 	"github.com/nermline/Melotrack-Creator/internal/handlers"
+	"github.com/nermline/Melotrack-Creator/ws"
 	"gorm.io/gorm"
 )
 
 func Setup(r *gin.Engine, db *gorm.DB, authMiddleware *jwt.GinJWTMiddleware) {
+	wsHub := ws.NewHub()
+
 	r.POST("/login", authMiddleware.LoginHandler)
 	r.GET("/refresh", authMiddleware.RefreshHandler)
+
+	r.GET("/ws/:pid", ws.ServeWS(wsHub))
 
 	api := r.Group("/api")
 	protectedMedia := r.Group("/")
 
 	api.Use(authMiddleware.MiddlewareFunc())
 	{
+		api.GET("/ws/editor/categories/:cid", ws.ServeEditorWS(wsHub))
+
 		api.GET("/projects", handlers.GetProjects(db))
 		api.GET("/projects/:pid", handlers.GetProjectByID(db))
 		api.POST("/projects", handlers.CreateProject(db))
