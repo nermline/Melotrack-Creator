@@ -13,6 +13,9 @@ func Setup(r *gin.Engine, db *gorm.DB, authMiddleware *jwt.GinJWTMiddleware) {
 
 	api := r.Group("/api")
 
+	r.Static("/media", "./downloads/processed")
+	r.Static("/raw", "./downloads/raw")
+
 	api.Use(authMiddleware.MiddlewareFunc())
 	{
 		api.GET("/projects", handlers.GetProjects(db))

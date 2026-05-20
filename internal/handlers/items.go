@@ -1,14 +1,19 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
+	"sync"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nermline/Melotrack-Creator/internal/media"
 	"github.com/nermline/Melotrack-Creator/internal/models"
 	"gorm.io/gorm"
 )
+
+var activeWorkers sync.Map
 
 type VideoInput struct {
 	YouTubeURL string  `json:"youtube_url"`
@@ -21,12 +26,31 @@ type VideoInput struct {
 	CropHeight int     `json:"crop_height"`
 }
 
+type UpdateVideoInput struct {
+	YouTubeURL *string  `json:"youtube_url"`
+	StartTime  *float64 `json:"start_time"`
+	EndTime    *float64 `json:"end_time"`
+	Volume     *float64 `json:"volume"`
+	CropX      *int     `json:"crop_x"`
+	CropY      *int     `json:"crop_y"`
+	CropWidth  *int     `json:"crop_width"`
+	CropHeight *int     `json:"crop_height"`
+}
+
 type AnswerInput struct {
 	Title           string `json:"title"`
 	ImageCropX      int    `json:"image_crop_x"`
 	ImageCropY      int    `json:"image_crop_y"`
 	ImageCropWidth  int    `json:"image_crop_width"`
 	ImageCropHeight int    `json:"image_crop_height"`
+}
+
+type UpdateAnswerInput struct {
+	Title           *string `json:"title"`
+	ImageCropX      *int    `json:"image_crop_x"`
+	ImageCropY      *int    `json:"image_crop_y"`
+	ImageCropWidth  *int    `json:"image_crop_width"`
+	ImageCropHeight *int    `json:"image_crop_height"`
 }
 
 type CreateQuizItemInput struct {
@@ -36,10 +60,10 @@ type CreateQuizItemInput struct {
 }
 
 type UpdateQuizItemInput struct {
-	ShowVideo bool         `json:"show_video"`
-	Position  *int         `json:"position"`
-	Video     *VideoInput  `json:"video"`
-	Answer    *AnswerInput `json:"answer"`
+	ShowVideo *bool              `json:"show_video"`
+	Position  *int               `json:"position"`
+	Video     *UpdateVideoInput  `json:"video"`
+	Answer    *UpdateAnswerInput `json:"answer"`
 }
 
 func verifyCategoryOwnership(c *gin.Context, db *gorm.DB, projectID string, categoryID string, userID uint) bool {
@@ -115,14 +139,15 @@ func CreateQuizItem(db *gorm.DB) gin.HandlerFunc {
 			CategoryID: uint(categoryID),
 			Position:   maxPosition + 1,
 			Video: models.Video{
-				YouTubeURL: input.Video.YouTubeURL,
-				StartTime:  input.Video.StartTime,
-				EndTime:    input.Video.EndTime,
-				Volume:     input.Video.Volume,
-				CropX:      input.Video.CropX,
-				CropY:      input.Video.CropY,
-				CropWidth:  input.Video.CropWidth,
-				CropHeight: input.Video.CropHeight,
+				YouTubeURL:       input.Video.YouTubeURL,
+				StartTime:        input.Video.StartTime,
+				EndTime:          input.Video.EndTime,
+				Volume:           input.Video.Volume,
+				CropX:            input.Video.CropX,
+				CropY:            input.Video.CropY,
+				CropWidth:        input.Video.CropWidth,
+				CropHeight:       input.Video.CropHeight,
+				ProcessingStatus: "pending",
 			},
 			Answer: models.Answer{
 				Title:           input.Answer.Title,
@@ -138,6 +163,16 @@ func CreateQuizItem(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create item"})
 			return
 		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+
+		activeWorkers.Store(item.ID, cancel)
+
+		go func(itemID uint, pID string) {
+			defer activeWorkers.Delete(itemID)
+
+			media.StartVideoProcessingWorker(ctx, db, itemID, true, pID)
+		}(item.ID, projectID)
 
 		c.JSON(http.StatusCreated, item)
 	}
@@ -165,28 +200,71 @@ func UpdateQuizItem(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var updatedItem models.QuizItem
+		var urlChanged bool
+		var paramsChanged bool
+
 		err := db.Transaction(func(tx *gorm.DB) error {
 			if err := tx.Preload("Answer").Where("id = ? AND category_id = ?", itemID, categoryID).First(&updatedItem).Error; err != nil {
 				return err
 			}
 
+			if input.ShowVideo != nil {
+				updatedItem.ShowVideo = *input.ShowVideo
+			}
+
 			if input.Video != nil {
-				updatedItem.Video.YouTubeURL = input.Video.YouTubeURL
-				updatedItem.Video.StartTime = input.Video.StartTime
-				updatedItem.Video.EndTime = input.Video.EndTime
-				updatedItem.Video.Volume = input.Video.Volume
-				updatedItem.Video.CropX = input.Video.CropX
-				updatedItem.Video.CropY = input.Video.CropY
-				updatedItem.Video.CropWidth = input.Video.CropWidth
-				updatedItem.Video.CropHeight = input.Video.CropHeight
+				if input.Video.YouTubeURL != nil && updatedItem.Video.YouTubeURL != *input.Video.YouTubeURL {
+					urlChanged = true
+					updatedItem.Video.YouTubeURL = *input.Video.YouTubeURL
+				}
+
+				if input.Video.StartTime != nil && updatedItem.Video.StartTime != *input.Video.StartTime {
+					paramsChanged = true
+					updatedItem.Video.StartTime = *input.Video.StartTime
+				}
+				if input.Video.EndTime != nil && updatedItem.Video.EndTime != *input.Video.EndTime {
+					paramsChanged = true
+					updatedItem.Video.EndTime = *input.Video.EndTime
+				}
+				if input.Video.Volume != nil && updatedItem.Video.Volume != *input.Video.Volume {
+					paramsChanged = true
+					updatedItem.Video.Volume = *input.Video.Volume
+				}
+				if input.Video.CropX != nil && updatedItem.Video.CropX != *input.Video.CropX {
+					paramsChanged = true
+					updatedItem.Video.CropX = *input.Video.CropX
+				}
+				if input.Video.CropY != nil && updatedItem.Video.CropY != *input.Video.CropY {
+					paramsChanged = true
+					updatedItem.Video.CropY = *input.Video.CropY
+				}
+				if input.Video.CropWidth != nil && updatedItem.Video.CropWidth != *input.Video.CropWidth {
+					paramsChanged = true
+					updatedItem.Video.CropWidth = *input.Video.CropWidth
+				}
+				if input.Video.CropHeight != nil && updatedItem.Video.CropHeight != *input.Video.CropHeight {
+					paramsChanged = true
+					updatedItem.Video.CropHeight = *input.Video.CropHeight
+				}
 			}
 
 			if input.Answer != nil {
-				updatedItem.Answer.Title = input.Answer.Title
-				updatedItem.Answer.ImageCropX = input.Answer.ImageCropX
-				updatedItem.Answer.ImageCropY = input.Answer.ImageCropY
-				updatedItem.Answer.ImageCropWidth = input.Answer.ImageCropWidth
-				updatedItem.Answer.ImageCropHeight = input.Answer.ImageCropHeight
+				if input.Answer.Title != nil {
+					updatedItem.Answer.Title = *input.Answer.Title
+				}
+				if input.Answer.ImageCropX != nil {
+					updatedItem.Answer.ImageCropX = *input.Answer.ImageCropX
+				}
+				if input.Answer.ImageCropY != nil {
+					updatedItem.Answer.ImageCropY = *input.Answer.ImageCropY
+				}
+				if input.Answer.ImageCropWidth != nil {
+					updatedItem.Answer.ImageCropWidth = *input.Answer.ImageCropWidth
+				}
+				if input.Answer.ImageCropHeight != nil {
+					updatedItem.Answer.ImageCropHeight = *input.Answer.ImageCropHeight
+				}
+
 				if err := tx.Save(&updatedItem.Answer).Error; err != nil {
 					return err
 				}
@@ -221,6 +299,10 @@ func UpdateQuizItem(db *gorm.DB) gin.HandlerFunc {
 				}
 			}
 
+			if urlChanged || paramsChanged {
+				updatedItem.Video.ProcessingStatus = "pending"
+			}
+
 			return tx.Save(&updatedItem).Error
 		})
 
@@ -231,6 +313,22 @@ func UpdateQuizItem(db *gorm.DB) gin.HandlerFunc {
 			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 			return
+		}
+
+		if urlChanged || paramsChanged {
+			if cancelFunc, exists := activeWorkers.Load(updatedItem.ID); exists {
+				cancelFunc.(context.CancelFunc)()
+			}
+
+			ctx, cancel := context.WithCancel(context.Background())
+
+			activeWorkers.Store(updatedItem.ID, cancel)
+
+			go func(itemID uint, uChanged bool, pID string) {
+				defer activeWorkers.Delete(itemID)
+
+				media.StartVideoProcessingWorker(ctx, db, itemID, uChanged, pID)
+			}(updatedItem.ID, urlChanged, projectID)
 		}
 
 		c.JSON(http.StatusOK, updatedItem)
