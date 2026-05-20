@@ -109,8 +109,8 @@ func initParams(db *gorm.DB, JWTSecret string) *jwt.GinJWTMiddleware {
 	return &jwt.GinJWTMiddleware{
 		Realm:       "melotrack",
 		Key:         []byte(JWTSecret),
-		Timeout:     999999 * time.Hour,
-		MaxRefresh:  999999 * time.Hour,
+		Timeout:     60 * time.Minute,
+		MaxRefresh:  10 * time.Hour,
 		IdentityKey: identityKey,
 		PayloadFunc: payloadFunc(),
 

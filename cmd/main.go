@@ -34,7 +34,7 @@ func main() {
 
 	routes.Setup(r, db, authMiddleware)
 
-	if err := r.Run(":80"); err != nil {
+	if err := r.Run(":8080"); err != nil {
 		log.Fatalf("main(): %v", err)
 	}
 }
