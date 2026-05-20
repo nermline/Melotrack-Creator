@@ -1,45 +1,49 @@
 import axios from 'axios';
 
 const api = axios.create({
-    baseURL: 'http://localhost:8080', // Зміни на порт свого бекенду
+    baseURL: 'http://localhost:8080',
     headers: {
         'Content-Type': 'application/json',
     },
 });
 
-// 1. Автоматично додаємо токен до кожного запиту
 api.interceptors.request.use((config) => {
     const token = localStorage.getItem('token');
-    if (token) {
+    // ЗАХИСТ: додаємо перевірку на рядки 'undefined' та 'null'
+    if (token && token !== 'undefined' && token !== 'null') {
         config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
 });
 
-// 2. Автоматично оновлюємо токен (Refresh), якщо він протух
 api.interceptors.response.use(
-    (response) => response, // Якщо все ок — просто повертаємо відповідь
+    (response) => response,
     async (error) => {
         const originalRequest = error.config;
 
-        // Якщо помилка 401 (Unauthorized) і ми ще не намагалися оновити токен
         if (error.response && error.response.status === 401 && !originalRequest._retry) {
-            originalRequest._retry = true; // Ставимо прапорець, щоб не зациклитись
+            
+            // ЗАХИСТ ВІД ЦИКЛУ: Якщо сам запит /refresh повернув 401/400, 
+            // не намагаємося рефрешити його знову. Просто викидаємо на логін.
+            if (originalRequest.url === '/refresh') {
+                localStorage.removeItem('token');
+                window.location.href = '/login';
+                return Promise.reject(error);
+            }
 
+            originalRequest._retry = true;
             try {
-                // Робимо запит на оновлення токена (стандартний шлях gin-jwt)
-                const response = await axios.get('http://localhost:8080/refresh_token', {
+                const response = await axios.get('http://localhost:8080/refresh', {
                     headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
                 });
                 
-                // Зберігаємо новий токен
-                localStorage.setItem('token', response.data.token);
+                // [ЗМІНЕНО]: Дістаємо новий токен з поля access_token
+                const newToken = response.data.access_token;
                 
-                // Повторюємо оригінальний запит з новим токеном
-                originalRequest.headers.Authorization = `Bearer ${response.data.token}`;
+                localStorage.setItem('token', newToken);
+                originalRequest.headers.Authorization = `Bearer ${newToken}`;
                 return api(originalRequest);
             } catch (refreshError) {
-                // Якщо і refresh протух — викидаємо юзера на логін
                 localStorage.removeItem('token');
                 window.location.href = '/login';
                 return Promise.reject(refreshError);

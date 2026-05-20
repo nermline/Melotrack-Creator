@@ -9,26 +9,31 @@ export default function Login() {
     const navigate = useNavigate();
 
     const handleLogin = async (e) => {
-        e.preventDefault();
-        setError('');
+            e.preventDefault();
+            setError('');
 
-        try {
-            // gin-jwt за замовчуванням очікує поля username та password
-            const response = await api.post('/login', {
-                username: username,
-                password: password
-            });
+            try {
+                const response = await api.post('/login', {
+                    username: username,
+                    password: password
+                });
 
-            // Зберігаємо токен у LocalStorage
-            localStorage.setItem('token', response.data.token);
-            
-            // Переходимо на сторінку проєктів
-            navigate('/');
-        } catch (err) {
-            setError('Невірний логін або пароль');
-            console.error('Помилка входу:', err);
-        }
-    };
+                console.log("Відповідь сервера при логіні:", response.data);
+
+                // [ЗМІНЕНО]: Тепер беремо access_token замість token
+                const actualToken = response.data.access_token;
+
+                if (actualToken && typeof actualToken === 'string') {
+                    localStorage.setItem('token', actualToken);
+                    navigate('/');
+                } else {
+                    setError('Сервер не повернув токен. Перевір консоль (F12).');
+                }
+            } catch (err) {
+                setError('Невірний логін або пароль');
+                console.error('Помилка входу:', err);
+            }
+        };
 
     return (
         <div style={{ padding: '20px' }}>
