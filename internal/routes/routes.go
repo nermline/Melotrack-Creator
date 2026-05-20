@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	jwt "github.com/appleboy/gin-jwt/v3"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/nermline/Melotrack-Creator/internal/handlers"
 	"github.com/nermline/Melotrack-Creator/ws"
@@ -11,6 +12,15 @@ import (
 )
 
 func Setup(r *gin.Engine, db *gorm.DB, authMiddleware *jwt.GinJWTMiddleware) {
+	r.Use(cors.New(cors.Config{
+		// Додай сюди порти, на яких крутитиметься твій локальний фронтенд
+		AllowOrigins:     []string{"http://localhost:3000", "http://localhost:5173"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+	}))
+
 	hub := ws.NewHub()
 
 	r.POST("/login", authMiddleware.LoginHandler)
