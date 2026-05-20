@@ -16,7 +16,7 @@ func Setup(r *gin.Engine, db *gorm.DB, authMiddleware *jwt.GinJWTMiddleware) {
 	r.POST("/login", authMiddleware.LoginHandler)
 	r.GET("/refresh", authMiddleware.RefreshHandler)
 
-	r.GET("/ws/:pid", ws.ServeWS(wsHub))
+	r.GET("/ws/game/:pid", ws.ServeGameWS(wsHub))
 
 	api := r.Group("/api")
 	protectedMedia := r.Group("/")
