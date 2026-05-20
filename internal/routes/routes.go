@@ -1,6 +1,8 @@
 package routes
 
 import (
+	"net/http"
+
 	jwt "github.com/appleboy/gin-jwt/v3"
 	"github.com/gin-gonic/gin"
 	"github.com/nermline/Melotrack-Creator/internal/handlers"
@@ -12,9 +14,7 @@ func Setup(r *gin.Engine, db *gorm.DB, authMiddleware *jwt.GinJWTMiddleware) {
 	r.GET("/refresh", authMiddleware.RefreshHandler)
 
 	api := r.Group("/api")
-
-	r.Static("/media", "./downloads/processed")
-	r.Static("/raw", "./downloads/raw")
+	protectedMedia := r.Group("/")
 
 	api.Use(authMiddleware.MiddlewareFunc())
 	{
@@ -35,5 +35,11 @@ func Setup(r *gin.Engine, db *gorm.DB, authMiddleware *jwt.GinJWTMiddleware) {
 		api.DELETE("/projects/:pid/categories/:cid/items/:iid", handlers.DeleteQuizItem(db))
 
 		api.POST("/logout", authMiddleware.LogoutHandler)
+	}
+
+	protectedMedia.Use(authMiddleware.MiddlewareFunc())
+	{
+		protectedMedia.StaticFS("/media", http.Dir("./downloads/processed"))
+		protectedMedia.StaticFS("/raw", http.Dir("./downloads/raw"))
 	}
 }

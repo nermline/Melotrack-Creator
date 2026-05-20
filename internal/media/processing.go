@@ -73,21 +73,32 @@ func StartVideoProcessingWorker(ctx context.Context, db *gorm.DB, itemID uint, u
 	_ = os.MkdirAll(outputDir, os.ModePerm)
 
 	newClipPath := filepath.Join(outputDir, fmt.Sprintf("%d.mp4", item.ID))
+	tmpClipPath := newClipPath + ".tmp"
 
 	_ = os.Remove(newClipPath)
+	_ = os.Remove(tmpClipPath)
 
-	if err := RunFFmpegCropAndTrim(ctx, mediaFile.FilePath, newClipPath, item.Video); err != nil {
+	if err := RunFFmpegCropAndTrim(ctx, mediaFile.FilePath, tmpClipPath, item.Video); err != nil {
+		_ = os.Remove(tmpClipPath)
 		failProcessing(err)
 		return
 	}
 
 	if ctx.Err() == nil {
+		if err := os.Rename(tmpClipPath, newClipPath); err != nil {
+			_ = os.Remove(tmpClipPath)
+			failProcessing(fmt.Errorf("не вдалося перейменувати фінальний кліп: %v", err))
+			return
+		}
+
 		webURL := fmt.Sprintf("/media/%s/%d/%d.mp4", projectID, item.CategoryID, item.ID)
 
 		db.Model(&item).Updates(map[string]interface{}{
 			"processing_status": "ready",
 			"clip_file_path":    webURL,
 		})
+	} else {
+		_ = os.Remove(tmpClipPath)
 	}
 }
 

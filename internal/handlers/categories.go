@@ -87,8 +87,19 @@ func CreateCategory(db *gorm.DB) gin.HandlerFunc {
 		category := models.Category{
 			ProjectID: uint(projectID),
 			Title:     input.Title,
-			Position:  maxPosition + 1,
 		}
+
+		err = db.Transaction(func(tx *gorm.DB) error {
+			var maxPosition int
+			tx.Model(&models.Category{}).
+				Where("project_id = ?", projectID).
+				Select("COALESCE(MAX(position), -1)").
+				Scan(&maxPosition)
+
+			category.Position = maxPosition + 1
+
+			return tx.Create(&category).Error
+		})
 
 		if err := db.Create(&category).Error; err != nil {
 			if isUniqueErr(err) {

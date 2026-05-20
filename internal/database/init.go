@@ -9,8 +9,8 @@ import (
 	"gorm.io/gorm"
 )
 
-var defaulAdminPassword string = "admin"
-var defauldAdminUsername string = "admin"
+var defaultAdminPassword string = "admin"
+var defaultAdminUsername string = "admin"
 
 func InitDB(path string) (*gorm.DB, error) {
 	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
@@ -51,21 +51,21 @@ func seedRoles(db *gorm.DB) {
 func seedAdmin(db *gorm.DB) error {
 	var adminRole models.Role
 
-	if err := db.Where("name = ?", defauldAdminUsername).First(&adminRole).Error; err != nil {
+	if err := db.Where("name = ?", defaultAdminUsername).First(&adminRole).Error; err != nil {
 		return fmt.Errorf("seedAdmin(): db.Where(): Failed to find admin role in DB: %v", err)
 	}
 
 	var count int64
-	db.Model(&models.User{}).Where("username = ?", defauldAdminUsername).Count(&count)
+	db.Model(&models.User{}).Where("username = ?", defaultAdminUsername).Count(&count)
 
 	if count == 0 {
-		hash, err := bcrypt.GenerateFromPassword([]byte(defaulAdminPassword), bcrypt.DefaultCost)
+		hash, err := bcrypt.GenerateFromPassword([]byte(defaultAdminPassword), bcrypt.DefaultCost)
 		if err != nil {
 			return fmt.Errorf("seedAdmin(): bcrypt.GenerateFromPassword(): Failed to generate hash: %v", err)
 		}
 
 		admin := models.User{
-			Username: defauldAdminUsername,
+			Username: defaultAdminUsername,
 			Password: string(hash),
 			RoleID:   adminRole.ID,
 		}

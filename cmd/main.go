@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"log"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lrstanley/go-ytdlp"
 	"github.com/nermline/Melotrack-Creator/internal/auth"
 	"github.com/nermline/Melotrack-Creator/internal/config"
 	"github.com/nermline/Melotrack-Creator/internal/database"
@@ -25,6 +27,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("main(): %v", err)
 	}
+
+	ytdlp.MustInstallAll(context.Background())
 
 	r := gin.Default()
 
