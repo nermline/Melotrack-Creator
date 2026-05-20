@@ -415,7 +415,7 @@ func RenderQuizItem(db *gorm.DB) gin.HandlerFunc {
 			media.StartRenderWorker(ctx, db, i, pID)
 		}(item, projectID)
 
-		c.JSON(http.StatusOK, gin.H{"message": "Rendering started", "render_status": "rendering"})
+		c.JSON(http.StatusOK, gin.H{"render_status": "rendering"})
 	}
 }
 
@@ -546,8 +546,7 @@ func UploadAnswerImage(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, gin.H{
-			"message":    "image uploaded successfully",
-			"image_path": webURL,
+			"message": "image uploaded successfully",
 		})
 	}
 }

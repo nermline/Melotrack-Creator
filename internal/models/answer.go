@@ -1,10 +1,12 @@
 package models
 
-import "gorm.io/gorm"
+import "time"
 
 type Answer struct {
-	gorm.Model
-	QuizItemID uint `gorm:"not null"`
-	Title      string
-	ImagePath  string `json:"-"`
+	ID         uint      `gorm:"primarykey" json:"id"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+	QuizItemID uint      `gorm:"not null" json:"quiz_item_id"`
+	Title      string    `json:"title"`
+	ImagePath  string    `json:"-"`
 }
