@@ -3,7 +3,13 @@ package handlers
 import (
 	"context"
 	"errors"
+	"fmt"
+	"image"
+	"image/jpeg"
+	_ "image/png"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 
@@ -13,7 +19,10 @@ import (
 	"gorm.io/gorm"
 )
 
-var activeWorkers sync.Map
+var (
+	activeDownloadWorkers sync.Map // mediaID -> cancelFunc
+	activeRenderWorkers   sync.Map // itemID -> cancelFunc
+)
 
 type VideoInput struct {
 	YoutubeURL string  `json:"youtube_url"`
@@ -94,7 +103,7 @@ func GetQuizItems(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var items []models.QuizItem
-		if err := db.Preload("Answer").Preload("Media").Where("category_id = ?", categoryID).Order("position ASC").Find(&items).Error; err != nil {
+		if err := db.Preload("Answer").Preload("Video.Media").Where("category_id = ?", categoryID).Order("position ASC").Find(&items).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 			return
 		}
@@ -128,12 +137,33 @@ func CreateQuizItem(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		categoryID, _ := strconv.ParseUint(categoryIDStr, 10, 32)
+		ytID := media.ExtractYouTubeID(input.Video.YoutubeURL)
+		if ytID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid youtube url"})
+			return
+		}
 
 		var item models.QuizItem
+		var mediaFile models.Media
+		var needDownload bool
 
-		// Wrapped in a transaction to prevent a race condition where two concurrent
-		// requests could read the same MAX(position) and create items with duplicate positions.
 		err := db.Transaction(func(tx *gorm.DB) error {
+			// 1. Отримуємо або створюємо Media
+			err := tx.Where("you_tube_id = ?", ytID).First(&mediaFile).Error
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				mediaFile = models.Media{
+					YouTubeID: ytID,
+					Status:    "downloading",
+				}
+				if err := tx.Create(&mediaFile).Error; err != nil {
+					return err
+				}
+				needDownload = true
+			} else if err != nil {
+				return err
+			}
+
+			// 2. Створюємо QuizItem
 			var maxPosition int
 			tx.Model(&models.QuizItem{}).
 				Where("category_id = ?", categoryID).
@@ -144,22 +174,19 @@ func CreateQuizItem(db *gorm.DB) gin.HandlerFunc {
 				CategoryID: uint(categoryID),
 				Position:   maxPosition + 1,
 				Video: models.Video{
-					YouTubeURL:       input.Video.YoutubeURL,
-					StartTime:        input.Video.StartTime,
-					EndTime:          input.Video.EndTime,
-					Volume:           input.Video.Volume,
-					CropX:            input.Video.CropX,
-					CropY:            input.Video.CropY,
-					CropWidth:        input.Video.CropWidth,
-					CropHeight:       input.Video.CropHeight,
-					ProcessingStatus: "pending",
+					YouTubeURL:   input.Video.YoutubeURL,
+					MediaID:      &mediaFile.ID,
+					StartTime:    input.Video.StartTime,
+					EndTime:      input.Video.EndTime,
+					Volume:       input.Video.Volume,
+					CropX:        input.Video.CropX,
+					CropY:        input.Video.CropY,
+					CropWidth:    input.Video.CropWidth,
+					CropHeight:   input.Video.CropHeight,
+					RenderStatus: "unrendered",
 				},
 				Answer: models.Answer{
-					Title:           input.Answer.Title,
-					ImageCropX:      input.Answer.ImageCropX,
-					ImageCropY:      input.Answer.ImageCropY,
-					ImageCropWidth:  input.Answer.ImageCropWidth,
-					ImageCropHeight: input.Answer.ImageCropHeight,
+					Title: input.Answer.Title,
 				},
 				ShowVideo: input.ShowVideo,
 			}
@@ -172,15 +199,17 @@ func CreateQuizItem(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		ctx, cancel := context.WithCancel(context.Background())
+		// Запускаємо завантаження оригінального відео, якщо його ще немає в базі
+		if needDownload {
+			ctx, cancel := context.WithCancel(context.Background())
+			activeDownloadWorkers.Store(mediaFile.ID, cancel)
 
-		activeWorkers.Store(item.ID, cancel)
-
-		go func(itemID uint, pID string) {
-			defer activeWorkers.Delete(itemID)
-
-			media.StartVideoProcessingWorker(ctx, db, itemID, true, pID)
-		}(item.ID, projectID)
+			go func(mID uint, url string) {
+				defer activeDownloadWorkers.Delete(mID)
+				media.StartDownloadWorker(ctx, db, mID, url)
+			}(mediaFile.ID, item.Video.YouTubeURL)
+		}
+		item.Video.Media = mediaFile
 
 		c.JSON(http.StatusCreated, item)
 	}
@@ -210,9 +239,11 @@ func UpdateQuizItem(db *gorm.DB) gin.HandlerFunc {
 		var updatedItem models.QuizItem
 		var urlChanged bool
 		var paramsChanged bool
+		var newMediaFile models.Media
+		var needDownload bool
 
 		err := db.Transaction(func(tx *gorm.DB) error {
-			if err := tx.Preload("Answer").Where("id = ? AND category_id = ?", itemID, categoryID).First(&updatedItem).Error; err != nil {
+			if err := tx.Preload("Answer").Preload("Video.Media").Where("id = ? AND category_id = ?", itemID, categoryID).First(&updatedItem).Error; err != nil {
 				return err
 			}
 
@@ -224,6 +255,23 @@ func UpdateQuizItem(db *gorm.DB) gin.HandlerFunc {
 				if input.Video.YoutubeURL != nil && updatedItem.Video.YouTubeURL != *input.Video.YoutubeURL {
 					urlChanged = true
 					updatedItem.Video.YouTubeURL = *input.Video.YoutubeURL
+
+					ytID := media.ExtractYouTubeID(*input.Video.YoutubeURL)
+					err := tx.Where("you_tube_id = ?", ytID).First(&newMediaFile).Error
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						newMediaFile = models.Media{
+							YouTubeID: ytID,
+							Status:    "downloading",
+						}
+						if err := tx.Create(&newMediaFile).Error; err != nil {
+							return err
+						}
+						needDownload = true
+					} else if err != nil {
+						return err
+					}
+					updatedItem.Video.MediaID = &newMediaFile.ID
+					updatedItem.Video.Media = newMediaFile
 				}
 
 				if input.Video.StartTime != nil && updatedItem.Video.StartTime != *input.Video.StartTime {
@@ -257,31 +305,19 @@ func UpdateQuizItem(db *gorm.DB) gin.HandlerFunc {
 			}
 
 			if input.Answer != nil {
+				// ... (оновлення полів Answer без змін) ...
 				if input.Answer.Title != nil {
 					updatedItem.Answer.Title = *input.Answer.Title
 				}
-				if input.Answer.ImageCropX != nil {
-					updatedItem.Answer.ImageCropX = *input.Answer.ImageCropX
-				}
-				if input.Answer.ImageCropY != nil {
-					updatedItem.Answer.ImageCropY = *input.Answer.ImageCropY
-				}
-				if input.Answer.ImageCropWidth != nil {
-					updatedItem.Answer.ImageCropWidth = *input.Answer.ImageCropWidth
-				}
-				if input.Answer.ImageCropHeight != nil {
-					updatedItem.Answer.ImageCropHeight = *input.Answer.ImageCropHeight
-				}
-
 				if err := tx.Save(&updatedItem.Answer).Error; err != nil {
 					return err
 				}
 			}
 
 			if input.Position != nil {
+				// ... (оновлення Position без змін) ...
 				newPos := *input.Position
 				oldPos := updatedItem.Position
-
 				if newPos != oldPos {
 					var count int64
 					tx.Model(&models.QuizItem{}).Where("category_id = ?", updatedItem.CategoryID).Count(&count)
@@ -308,7 +344,7 @@ func UpdateQuizItem(db *gorm.DB) gin.HandlerFunc {
 			}
 
 			if urlChanged || paramsChanged {
-				updatedItem.Video.ProcessingStatus = "pending"
+				updatedItem.Video.RenderStatus = "unrendered"
 			}
 
 			return tx.Save(&updatedItem).Error
@@ -323,23 +359,63 @@ func UpdateQuizItem(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		if urlChanged || paramsChanged {
-			if cancelFunc, exists := activeWorkers.Load(updatedItem.ID); exists {
-				cancelFunc.(context.CancelFunc)()
-			}
-
+		if needDownload {
 			ctx, cancel := context.WithCancel(context.Background())
+			activeDownloadWorkers.Store(newMediaFile.ID, cancel)
 
-			activeWorkers.Store(updatedItem.ID, cancel)
-
-			go func(itemID uint, uChanged bool, pID string) {
-				defer activeWorkers.Delete(itemID)
-
-				media.StartVideoProcessingWorker(ctx, db, itemID, uChanged, pID)
-			}(updatedItem.ID, urlChanged, projectID)
+			go func(mID uint, url string) {
+				defer activeDownloadWorkers.Delete(mID)
+				media.StartDownloadWorker(ctx, db, mID, url)
+			}(newMediaFile.ID, updatedItem.Video.YouTubeURL)
 		}
 
 		c.JSON(http.StatusOK, updatedItem)
+	}
+}
+
+// RenderQuizItem - новий ендпоінт для застосування налаштувань (ffmpeg)
+func RenderQuizItem(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, ok := getUserID(c)
+		if !ok {
+			return
+		}
+
+		projectID := c.Param("pid")
+		categoryID := c.Param("cid")
+		itemID := c.Param("iid")
+
+		if !verifyCategoryOwnership(c, db, projectID, categoryID, userID) {
+			return
+		}
+
+		var item models.QuizItem
+		if err := db.Preload("Video.Media").Where("id = ? AND category_id = ?", itemID, categoryID).First(&item).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "item not found"})
+			return
+		}
+
+		if item.Video.Media.Status != "ready" {
+			c.JSON(http.StatusConflict, gin.H{"error": "Original video is still downloading or encountered an error"})
+			return
+		}
+
+		// Відміняємо попередній рендер, якщо він ще йде
+		if cancelFunc, exists := activeRenderWorkers.Load(item.ID); exists {
+			cancelFunc.(context.CancelFunc)()
+		}
+
+		db.Model(&item).Update("render_status", "rendering")
+
+		ctx, cancel := context.WithCancel(context.Background())
+		activeRenderWorkers.Store(item.ID, cancel)
+
+		go func(i models.QuizItem, pID string) {
+			defer activeRenderWorkers.Delete(i.ID)
+			media.StartRenderWorker(ctx, db, i, pID)
+		}(item, projectID)
+
+		c.JSON(http.StatusOK, gin.H{"message": "Rendering started", "render_status": "rendering"})
 	}
 }
 
@@ -367,6 +443,13 @@ func DeleteQuizItem(db *gorm.DB) gin.HandlerFunc {
 			oldPos := item.Position
 			catID := item.CategoryID
 
+			// Відміняємо рендер, якщо він працює
+			if cancelFunc, exists := activeRenderWorkers.Load(item.ID); exists {
+				cancelFunc.(context.CancelFunc)()
+			}
+
+			media.CleanItemMedia(projectID, categoryID, itemID)
+
 			if err := tx.Unscoped().Delete(&item).Error; err != nil {
 				return err
 			}
@@ -386,5 +469,114 @@ func DeleteQuizItem(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, gin.H{"message": "item deleted successfully"})
+	}
+}
+
+// UploadAnswerImage приймає файл, декодує його (підтримує JPEG, PNG),
+// конвертує у стандартний JPEG та зберігає.
+func UploadAnswerImage(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, ok := getUserID(c)
+		if !ok {
+			return
+		}
+
+		projectID := c.Param("pid")
+		categoryID := c.Param("cid")
+		itemID := c.Param("iid")
+
+		if !verifyCategoryOwnership(c, db, projectID, categoryID, userID) {
+			return
+		}
+
+		// Отримуємо файл з form-data під ключем "image"
+		file, err := c.FormFile("image")
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "image file is required"})
+			return
+		}
+
+		// Відкриваємо завантажений файл
+		src, err := file.Open()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to open uploaded file"})
+			return
+		}
+		defer src.Close()
+
+		// Декодуємо зображення. image.Decode автоматично розпізнає формат (JPEG або PNG)
+		img, format, err := image.Decode(src)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported image format or corrupted file: %v", err)})
+			return
+		}
+		fmt.Printf("Uploaded image format: %s\n", format)
+
+		// Створюємо директорію downloads/answers/{projectID}/{categoryID}
+		outDir := filepath.Join(".", "downloads", "answers", projectID, categoryID)
+		if err := os.MkdirAll(outDir, os.ModePerm); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create directory"})
+			return
+		}
+
+		// Всі файли зберігатимемо у форматі .jpg
+		outPath := filepath.Join(outDir, fmt.Sprintf("%s.jpg", itemID))
+		out, err := os.Create(outPath)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save image"})
+			return
+		}
+		defer out.Close()
+
+		// Енкодимо зображення у JPEG з якістю 85%
+		var opt jpeg.Options
+		opt.Quality = 85
+		if err := jpeg.Encode(out, img, &opt); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to encode image to jpeg"})
+			return
+		}
+
+		// Формуємо веб-шлях
+		webURL := fmt.Sprintf("/answers/%s/%s/%s.jpg", projectID, categoryID, itemID)
+
+		// Оновлюємо шлях в базі даних
+		if err := db.Model(&models.Answer{}).Where("quiz_item_id = ?", itemID).Update("image_path", webURL).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update database"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"message":    "image uploaded successfully",
+			"image_path": webURL,
+		})
+	}
+}
+
+func DeleteQuizItemImage(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, ok := getUserID(c)
+		if !ok {
+			return
+		}
+
+		projectID := c.Param("pid")
+		categoryID := c.Param("cid")
+		itemID := c.Param("iid")
+
+		if !verifyCategoryOwnership(c, db, projectID, categoryID, userID) {
+			return
+		}
+
+		// Видаляємо файл з диска
+		imagePath := filepath.Join(".", "downloads", "answers", projectID, categoryID, fmt.Sprintf("%s.jpg", itemID))
+		_ = os.Remove(imagePath)
+
+		// Очищаємо ImagePath в базі даних для цієї відповіді
+		if err := db.Model(&models.Answer{}).Where("quiz_item_id = ?", itemID).Update("image_path", "").Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update database"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "answer image deleted successfully"})
 	}
 }

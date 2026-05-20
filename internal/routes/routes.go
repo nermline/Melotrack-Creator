@@ -31,6 +31,9 @@ func Setup(r *gin.Engine, db *gorm.DB, authMiddleware *jwt.GinJWTMiddleware) {
 
 		api.GET("/projects/:pid/categories/:cid/items", handlers.GetQuizItems(db))
 		api.POST("/projects/:pid/categories/:cid/items", handlers.CreateQuizItem(db))
+		api.POST("/projects/:pid/categories/:cid/items/:iid/render", handlers.RenderQuizItem(db))
+		api.POST("/projects/:pid/categories/:cid/items/:iid/image", handlers.UploadAnswerImage(db))
+		api.DELETE("/projects/:pid/categories/:cid/items/:iid/image", handlers.DeleteQuizItemImage(db))
 		api.PUT("/projects/:pid/categories/:cid/items/:iid", handlers.UpdateQuizItem(db))
 		api.DELETE("/projects/:pid/categories/:cid/items/:iid", handlers.DeleteQuizItem(db))
 
@@ -41,5 +44,6 @@ func Setup(r *gin.Engine, db *gorm.DB, authMiddleware *jwt.GinJWTMiddleware) {
 	{
 		protectedMedia.StaticFS("/media", http.Dir("./downloads/processed"))
 		protectedMedia.StaticFS("/raw", http.Dir("./downloads/raw"))
+		protectedMedia.StaticFS("/answers", http.Dir("./downloads/answers"))
 	}
 }

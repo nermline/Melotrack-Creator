@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nermline/Melotrack-Creator/internal/media"
 	"github.com/nermline/Melotrack-Creator/internal/models"
 	"gorm.io/gorm"
 )
@@ -220,14 +221,16 @@ func DeleteCategory(db *gorm.DB) gin.HandlerFunc {
 			}
 
 			oldPos := category.Position
-			projectID := category.ProjectID
+			pID := category.ProjectID
+
+			media.CleanCategoryMedia(projectID, categoryID)
 
 			if err := tx.Unscoped().Delete(&category).Error; err != nil {
 				return err
 			}
 
 			if err := tx.Model(&models.Category{}).
-				Where("project_id = ? AND position > ?", projectID, oldPos).
+				Where("project_id = ? AND position > ?", pID, oldPos).
 				UpdateColumn("position", gorm.Expr("position - 1")).Error; err != nil {
 				return err
 			}
@@ -240,15 +243,13 @@ func DeleteCategory(db *gorm.DB) gin.HandlerFunc {
 				c.JSON(http.StatusNotFound, gin.H{"error": "category not found"})
 				return
 			}
-
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete category"})
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"message": "category deleted successfully"})
+		c.JSON(http.StatusOK, gin.H{"message": "category and all its media deleted successfully"})
 	}
 }
-
 func verifyProjectOwnership(c *gin.Context, db *gorm.DB, projectID string, userID uint) bool {
 	var project models.Project
 	if err := db.Select("id").Where("id = ? AND user_id = ?", projectID, userID).First(&project).Error; err != nil {

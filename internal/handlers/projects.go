@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nermline/Melotrack-Creator/internal/media"
 	"github.com/nermline/Melotrack-Creator/internal/models"
 	"gorm.io/gorm"
 )
@@ -169,6 +170,8 @@ func DeleteProject(db *gorm.DB) gin.HandlerFunc {
 
 		projectID := c.Param("pid")
 
+		media.CleanProjectMedia(projectID)
+
 		result := db.Unscoped().Where("id = ? AND user_id = ?", projectID, userID).Delete(&models.Project{})
 
 		if result.Error != nil {
@@ -181,7 +184,7 @@ func DeleteProject(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"message": "project deleted successfully"})
+		c.JSON(http.StatusOK, gin.H{"message": "project and all its associated media deleted successfully"})
 	}
 }
 
