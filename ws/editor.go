@@ -2,9 +2,8 @@ package ws
 
 import (
 	"encoding/json"
-	"log"
-
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -17,10 +16,24 @@ type EditorRoom struct {
 }
 
 type EditorClient struct {
-	Hub  *Hub
 	Room *EditorRoom
 	Conn *websocket.Conn
 	Send chan EditorMessage
+}
+
+func (r *EditorRoom) Register(c *EditorClient) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.Clients[c] = true
+}
+
+func (r *EditorRoom) Unregister(c *EditorClient) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.Clients[c]; ok {
+		delete(r.Clients, c)
+		close(c.Send)
+	}
 }
 
 func (r *EditorRoom) BroadcastEdit(sender *EditorClient, msg EditorMessage) {
@@ -32,38 +45,14 @@ func (r *EditorRoom) BroadcastEdit(sender *EditorClient, msg EditorMessage) {
 			select {
 			case client.Send <- msg:
 			default:
-				close(client.Send)
-				delete(r.Clients, client)
 			}
-		}
-	}
-}
-
-// SystemBroadcast відправляє подію всім (включаючи ініціатора, наприклад, при видаленні елемента через HTTP)
-func (h *Hub) SystemBroadcast(categoryID string, msg EditorMessage) {
-	h.mu.RLock()
-	room, exists := h.EditorRooms[categoryID]
-	h.mu.RUnlock()
-
-	if !exists {
-		return
-	}
-
-	room.mu.RLock()
-	defer room.mu.RUnlock()
-	for client := range room.Clients {
-		select {
-		case client.Send <- msg:
-		default:
 		}
 	}
 }
 
 func (c *EditorClient) readPump() {
 	defer func() {
-		c.Room.mu.Lock()
-		delete(c.Room.Clients, c)
-		c.Room.mu.Unlock()
+		c.Room.Unregister(c)
 		c.Conn.Close()
 	}()
 
@@ -72,8 +61,10 @@ func (c *EditorClient) readPump() {
 		if err != nil {
 			break
 		}
+
 		var msg EditorMessage
 		if err := json.Unmarshal(message, &msg); err == nil {
+			// Пересилаємо чорнові зміни всім іншим у кімнаті
 			if msg.Action == "sync_edit" {
 				c.Room.BroadcastEdit(c, msg)
 			}
@@ -82,10 +73,28 @@ func (c *EditorClient) readPump() {
 }
 
 func (c *EditorClient) writePump() {
-	defer c.Conn.Close()
-	for msg := range c.Send {
-		if err := c.Conn.WriteJSON(msg); err != nil {
-			break
+	ticker := time.NewTicker(50 * time.Second)
+	defer func() {
+		ticker.Stop()
+		c.Conn.Close()
+	}()
+
+	for {
+		select {
+		case msg, ok := <-c.Send:
+			if !ok {
+				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
+				return
+			}
+			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if err := c.Conn.WriteJSON(msg); err != nil {
+				return
+			}
+		case <-ticker.C:
+			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
 		}
 	}
 }
@@ -96,22 +105,17 @@ func ServeEditorWS(hub *Hub) gin.HandlerFunc {
 
 		conn, err := Upgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
-			log.Printf("Upgrade error: %v", err)
 			return
 		}
 
 		room := hub.GetOrCreateEditorRoom(categoryID)
-
 		client := &EditorClient{
-			Hub:  hub,
 			Room: room,
 			Conn: conn,
 			Send: make(chan EditorMessage, 256),
 		}
 
-		room.mu.Lock()
-		room.Clients[client] = true
-		room.mu.Unlock()
+		room.Register(client)
 
 		go client.writePump()
 		go client.readPump()

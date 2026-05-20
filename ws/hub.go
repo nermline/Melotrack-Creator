@@ -11,11 +11,10 @@ var Upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true // Для розробки. В продакшені краще вказати конкретні домени.
+		return true // Дозволено все (для розробки)
 	},
 }
 
-// Hub керує всіма активними сесіями та кімнатами
 type Hub struct {
 	GameSessions map[string]*GameSession
 	EditorRooms  map[string]*EditorRoom
@@ -63,4 +62,24 @@ func (h *Hub) GetOrCreateEditorRoom(categoryID string) *EditorRoom {
 	}
 	h.EditorRooms[categoryID] = room
 	return room
+}
+
+// SystemBroadcast дозволяє REST-контролерам надсилати сповіщення в редактор
+func (h *Hub) SystemBroadcast(categoryID string, msg EditorMessage) {
+	h.mu.RLock()
+	room, exists := h.EditorRooms[categoryID]
+	h.mu.RUnlock()
+
+	if !exists {
+		return
+	}
+
+	room.mu.RLock()
+	defer room.mu.RUnlock()
+	for client := range room.Clients {
+		select {
+		case client.Send <- msg:
+		default:
+		}
+	}
 }

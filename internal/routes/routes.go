@@ -11,19 +11,16 @@ import (
 )
 
 func Setup(r *gin.Engine, db *gorm.DB, authMiddleware *jwt.GinJWTMiddleware) {
-	wsHub := ws.NewHub()
+	hub := ws.NewHub()
 
 	r.POST("/login", authMiddleware.LoginHandler)
 	r.GET("/refresh", authMiddleware.RefreshHandler)
-
-	r.GET("/ws/game/:pid", ws.ServeGameWS(wsHub))
 
 	api := r.Group("/api")
 	protectedMedia := r.Group("/")
 
 	api.Use(authMiddleware.MiddlewareFunc())
 	{
-		api.GET("/ws/editor/categories/:cid", ws.ServeEditorWS(wsHub))
 
 		api.GET("/projects", handlers.GetProjects(db))
 		api.GET("/projects/:pid", handlers.GetProjectByID(db))
@@ -31,18 +28,22 @@ func Setup(r *gin.Engine, db *gorm.DB, authMiddleware *jwt.GinJWTMiddleware) {
 		api.PUT("/projects/:pid", handlers.UpdateProject(db))
 		api.DELETE("/projects/:pid", handlers.DeleteProject(db))
 
+		api.GET("/projects/:pid/ws", ws.ServeGameWS(hub))
+
 		api.GET("/projects/:pid/categories", handlers.GetCategories(db))
 		api.POST("/projects/:pid/categories", handlers.CreateCategory(db))
 		api.PUT("/projects/:pid/categories/:cid", handlers.UpdateCategory(db))
 		api.DELETE("/projects/:pid/categories/:cid", handlers.DeleteCategory(db))
 
+		api.GET("/categories/:cid/ws", ws.ServeEditorWS(hub))
+
 		api.GET("/projects/:pid/categories/:cid/items", handlers.GetQuizItems(db))
-		api.POST("/projects/:pid/categories/:cid/items", handlers.CreateQuizItem(db))
-		api.POST("/projects/:pid/categories/:cid/items/:iid/render", handlers.RenderQuizItem(db))
-		api.POST("/projects/:pid/categories/:cid/items/:iid/image", handlers.UploadAnswerImage(db))
-		api.DELETE("/projects/:pid/categories/:cid/items/:iid/image", handlers.DeleteQuizItemImage(db))
-		api.PUT("/projects/:pid/categories/:cid/items/:iid", handlers.UpdateQuizItem(db))
-		api.DELETE("/projects/:pid/categories/:cid/items/:iid", handlers.DeleteQuizItem(db))
+		api.POST("/projects/:pid/categories/:cid/items", handlers.CreateQuizItem(db, hub))
+		api.POST("/projects/:pid/categories/:cid/items/:iid/render", handlers.RenderQuizItem(db, hub))
+		api.POST("/projects/:pid/categories/:cid/items/:iid/image", handlers.UploadAnswerImage(db, hub))
+		api.DELETE("/projects/:pid/categories/:cid/items/:iid/image", handlers.DeleteQuizItemImage(db, hub))
+		api.PUT("/projects/:pid/categories/:cid/items/:iid", handlers.UpdateQuizItem(db, hub))
+		api.DELETE("/projects/:pid/categories/:cid/items/:iid", handlers.DeleteQuizItem(db, hub))
 
 		api.POST("/logout", authMiddleware.LogoutHandler)
 	}

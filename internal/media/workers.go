@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/nermline/Melotrack-Creator/internal/models"
+	"github.com/nermline/Melotrack-Creator/ws"
 	"gorm.io/gorm"
 )
 
@@ -29,7 +30,7 @@ func StartDownloadWorker(ctx context.Context, db *gorm.DB, mediaID uint, youtube
 	})
 }
 
-func StartRenderWorker(ctx context.Context, db *gorm.DB, item models.QuizItem, projectID string) {
+func StartRenderWorker(ctx context.Context, db *gorm.DB, hub *ws.Hub, item models.QuizItem, projectID string, categoryID string) {
 	failProcessing := func(err error) {
 		// Якщо процес скасовано контекстом (наприклад, користувач запустив новий рендер
 		// або видалив елемент), не записуємо помилку в БД, просто мовчки виходимо.
@@ -37,6 +38,13 @@ func StartRenderWorker(ctx context.Context, db *gorm.DB, item models.QuizItem, p
 			return
 		}
 		db.Model(&item).Update("render_status", "error")
+
+		hub.SystemBroadcast(categoryID, ws.EditorMessage{
+			Action: "item_render_error",
+			ItemID: item.ID,
+			Data:   map[string]string{"render_status": "error"},
+		})
+
 		fmt.Printf("Помилка рендерингу для Item %d: %v\n", item.ID, err)
 	}
 
@@ -77,6 +85,12 @@ func StartRenderWorker(ctx context.Context, db *gorm.DB, item models.QuizItem, p
 		db.Model(&item).Updates(map[string]interface{}{
 			"render_status":   "ready",
 			"ready_file_path": webURL,
+		})
+
+		hub.SystemBroadcast(categoryID, ws.EditorMessage{
+			Action: "item_render_ready",
+			ItemID: item.ID,
+			Data:   map[string]string{"render_status": "ready"},
 		})
 
 		fmt.Printf("Рендер успішно завершено для Item %d\n", item.ID)

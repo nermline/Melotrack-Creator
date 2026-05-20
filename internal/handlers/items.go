@@ -16,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/nermline/Melotrack-Creator/internal/media"
 	"github.com/nermline/Melotrack-Creator/internal/models"
+	"github.com/nermline/Melotrack-Creator/ws"
 	"gorm.io/gorm"
 )
 
@@ -116,7 +117,7 @@ func GetQuizItems(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func CreateQuizItem(db *gorm.DB) gin.HandlerFunc {
+func CreateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input CreateQuizItemInput
 		if err := c.ShouldBindJSON(&input); err != nil {
@@ -211,11 +212,17 @@ func CreateQuizItem(db *gorm.DB) gin.HandlerFunc {
 		}
 		item.Video.Media = mediaFile
 
+		hub.SystemBroadcast(categoryIDStr, ws.EditorMessage{
+			Action: "item_created",
+			ItemID: item.ID,
+			Data:   item,
+		})
+
 		c.JSON(http.StatusCreated, item)
 	}
 }
 
-func UpdateQuizItem(db *gorm.DB) gin.HandlerFunc {
+func UpdateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input UpdateQuizItemInput
 		if err := c.ShouldBindJSON(&input); err != nil {
@@ -369,12 +376,18 @@ func UpdateQuizItem(db *gorm.DB) gin.HandlerFunc {
 			}(newMediaFile.ID, updatedItem.Video.YouTubeURL)
 		}
 
+		hub.SystemBroadcast(categoryID, ws.EditorMessage{
+			Action: "item_updated",
+			ItemID: updatedItem.ID,
+			Data:   updatedItem, // Відправляємо повністю оновлений об'єкт
+		})
+
 		c.JSON(http.StatusOK, updatedItem)
 	}
 }
 
 // RenderQuizItem - новий ендпоінт для застосування налаштувань (ffmpeg)
-func RenderQuizItem(db *gorm.DB) gin.HandlerFunc {
+func RenderQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := getUserID(c)
 		if !ok {
@@ -407,19 +420,25 @@ func RenderQuizItem(db *gorm.DB) gin.HandlerFunc {
 
 		db.Model(&item).Update("render_status", "rendering")
 
+		hub.SystemBroadcast(categoryID, ws.EditorMessage{
+			Action: "item_rendering",
+			ItemID: item.ID,
+			Data:   map[string]string{"render_status": "rendering"},
+		})
+
 		ctx, cancel := context.WithCancel(context.Background())
 		activeRenderWorkers.Store(item.ID, cancel)
 
-		go func(i models.QuizItem, pID string) {
+		go func(i models.QuizItem, pID string, catID string) {
 			defer activeRenderWorkers.Delete(i.ID)
-			media.StartRenderWorker(ctx, db, i, pID)
-		}(item, projectID)
+			media.StartRenderWorker(ctx, db, hub, i, pID, catID)
+		}(item, projectID, categoryID)
 
 		c.JSON(http.StatusOK, gin.H{"render_status": "rendering"})
 	}
 }
 
-func DeleteQuizItem(db *gorm.DB) gin.HandlerFunc {
+func DeleteQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := getUserID(c)
 		if !ok {
@@ -468,13 +487,19 @@ func DeleteQuizItem(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		parsedItemID, _ := strconv.ParseUint(itemID, 10, 32)
+		hub.SystemBroadcast(categoryID, ws.EditorMessage{
+			Action: "item_deleted",
+			ItemID: uint(parsedItemID),
+		})
+
 		c.JSON(http.StatusOK, gin.H{"message": "item deleted successfully"})
 	}
 }
 
 // UploadAnswerImage приймає файл, декодує його (підтримує JPEG, PNG),
 // конвертує у стандартний JPEG та зберігає.
-func UploadAnswerImage(db *gorm.DB) gin.HandlerFunc {
+func UploadAnswerImage(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := getUserID(c)
 		if !ok {
@@ -545,13 +570,21 @@ func UploadAnswerImage(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		parsedItemID, _ := strconv.ParseUint(itemID, 10, 32)
+
+		hub.SystemBroadcast(categoryID, ws.EditorMessage{
+			Action: "item_image_updated",
+			ItemID: uint(parsedItemID),
+			Data:   map[string]string{"image_path": webURL},
+		})
+
 		c.JSON(http.StatusOK, gin.H{
 			"message": "image uploaded successfully",
 		})
 	}
 }
 
-func DeleteQuizItemImage(db *gorm.DB) gin.HandlerFunc {
+func DeleteQuizItemImage(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := getUserID(c)
 		if !ok {
@@ -575,6 +608,14 @@ func DeleteQuizItemImage(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update database"})
 			return
 		}
+
+		parsedItemID, _ := strconv.ParseUint(itemID, 10, 32)
+
+		// [ДОДАНО] Сповіщаємо кімнату про видалення фото
+		hub.SystemBroadcast(categoryID, ws.EditorMessage{
+			Action: "item_image_deleted",
+			ItemID: uint(parsedItemID),
+		})
 
 		c.JSON(http.StatusOK, gin.H{"message": "answer image deleted successfully"})
 	}

@@ -6,21 +6,18 @@ type GameState struct {
 	ProjectID  string  `json:"project_id"`
 	CategoryID uint    `json:"category_id"`
 	ItemID     uint    `json:"item_id"`
-	Status     string  `json:"status"`
+	Status     string  `json:"status"` // "welcome", "title", "pre_item", "playing", "thinking", "paused", "answers"
 	SeekTime   float64 `json:"seek_time,omitempty"`
 }
 
-type IncomingMessage struct {
-	Action      string  `json:"action"`
-	TargetState string  `json:"target_state,omitempty"`
-	CategoryID  uint    `json:"category_id,omitempty"`
-	ItemID      uint    `json:"item_id,omitempty"`
-	SeekTime    float64 `json:"seek_time,omitempty"`
+type GameIncomingMessage struct {
+	Action   string    `json:"action"` // "update_state", "ping"
+	NewState GameState `json:"new_state"`
 }
 
-type OutgoingMessage struct {
-	Event string     `json:"event"`
-	State *GameState `json:"state,omitempty"` // Зверни увагу на зірочку (*)
+type GameOutgoingMessage struct {
+	Event string    `json:"event"`
+	State GameState `json:"state"`
 }
 
 // --- ДЛЯ КІМНАТИ РЕДАГУВАННЯ (Організатори) ---

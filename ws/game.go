@@ -2,10 +2,9 @@ package ws
 
 import (
 	"encoding/json"
-	"log"
-	"time"
-
+	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -19,81 +18,59 @@ type GameSession struct {
 }
 
 type GameClient struct {
-	Hub     *Hub
 	Session *GameSession
 	Conn    *websocket.Conn
-	Role    string // "screen" або "remote"
-	Send    chan OutgoingMessage
+	Role    string
+	Send    chan GameOutgoingMessage
 }
 
-func (s *GameSession) BroadcastState() {
+func (s *GameSession) Register(c *GameClient) {
+	s.mu.Lock()
+	s.Clients[c] = true
+	s.mu.Unlock()
+
+	// Відправляємо поточний стан тільки новому клієнту
+	s.mu.RLock()
+	stateCopy := s.State
+	s.mu.RUnlock()
+
+	c.Send <- GameOutgoingMessage{Event: "state_updated", State: stateCopy}
+}
+
+func (s *GameSession) Unregister(c *GameClient) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.Clients[c]; ok {
+		delete(s.Clients, c)
+		close(c.Send)
+	}
+}
+
+func (s *GameSession) UpdateState(newState GameState) {
+	s.mu.Lock()
+	s.State = newState
+	s.mu.Unlock()
+	s.Broadcast()
+}
+
+func (s *GameSession) Broadcast() {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	msg := OutgoingMessage{
-		Event: "state_update",
-		State: &s.State,
-	}
+	msg := GameOutgoingMessage{Event: "state_updated", State: s.State}
 
 	for client := range s.Clients {
 		select {
 		case client.Send <- msg:
 		default:
-			close(client.Send)
-			delete(s.Clients, client)
-		}
-	}
-}
-
-func (s *GameSession) HandleMessage(client *GameClient, msg IncomingMessage) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if msg.Action == "video_ended" && client.Role == "screen" {
-		s.State.Status = "thinking"
-		s.mu.Unlock()
-		s.BroadcastState()
-		s.mu.Lock()
-		return
-	}
-
-	if client.Role == "remote" {
-		stateChanged := false
-		switch msg.Action {
-		case "set_state":
-			s.State.Status = msg.TargetState
-			if msg.CategoryID != 0 {
-				s.State.CategoryID = msg.CategoryID
-			}
-			if msg.ItemID != 0 {
-				s.State.ItemID = msg.ItemID
-			}
-			s.State.SeekTime = 0
-			stateChanged = true
-		case "play":
-			s.State.Status = "playing"
-			stateChanged = true
-		case "pause":
-			s.State.Status = "paused"
-			stateChanged = true
-		case "seek":
-			s.State.SeekTime = msg.SeekTime
-			stateChanged = true
-		}
-
-		if stateChanged {
-			s.mu.Unlock()
-			s.BroadcastState()
-			s.mu.Lock()
+			// Якщо канал забитий, ігноруємо. Мертвий клієнт відвалиться в readPump
 		}
 	}
 }
 
 func (c *GameClient) readPump() {
 	defer func() {
-		c.Session.mu.Lock()
-		delete(c.Session.Clients, c)
-		c.Session.mu.Unlock()
+		c.Session.Unregister(c)
 		c.Conn.Close()
 	}()
 
@@ -102,15 +79,18 @@ func (c *GameClient) readPump() {
 		if err != nil {
 			break
 		}
-		var incomingMsg IncomingMessage
-		if err := json.Unmarshal(message, &incomingMsg); err == nil {
-			c.Session.HandleMessage(c, incomingMsg)
+
+		var msg GameIncomingMessage
+		if err := json.Unmarshal(message, &msg); err == nil {
+			if msg.Action == "update_state" {
+				c.Session.UpdateState(msg.NewState)
+			}
 		}
 	}
 }
 
 func (c *GameClient) writePump() {
-	ticker := time.NewTicker(54 * time.Second)
+	ticker := time.NewTicker(50 * time.Second)
 	defer func() {
 		ticker.Stop()
 		c.Conn.Close()
@@ -118,12 +98,15 @@ func (c *GameClient) writePump() {
 
 	for {
 		select {
-		case message, ok := <-c.Send:
+		case msg, ok := <-c.Send:
 			if !ok {
 				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
-			c.Conn.WriteJSON(message)
+			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if err := c.Conn.WriteJSON(msg); err != nil {
+				return
+			}
 		case <-ticker.C:
 			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
@@ -139,31 +122,24 @@ func ServeGameWS(hub *Hub) gin.HandlerFunc {
 		role := c.Query("role")
 
 		if role != "screen" && role != "remote" {
-			c.JSON(400, gin.H{"error": "Invalid role"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "role must be screen or remote"})
 			return
 		}
 
 		conn, err := Upgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
-			log.Printf("Upgrade error: %v", err)
 			return
 		}
 
 		session := hub.GetOrCreateGameSession(projectID)
-
 		client := &GameClient{
-			Hub:     hub,
 			Session: session,
 			Conn:    conn,
 			Role:    role,
-			Send:    make(chan OutgoingMessage, 256),
+			Send:    make(chan GameOutgoingMessage, 256),
 		}
 
-		session.mu.Lock()
-		session.Clients[client] = true
-		session.mu.Unlock()
-
-		client.Send <- OutgoingMessage{Event: "state_update", State: &session.State}
+		session.Register(client)
 
 		go client.writePump()
 		go client.readPump()
