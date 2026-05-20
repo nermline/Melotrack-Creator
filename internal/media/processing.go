@@ -123,7 +123,7 @@ func RunFFmpegCropAndTrim(ctx context.Context, rawPath, outPath string, v models
 	}
 
 	args = append(args, "-af", fmt.Sprintf("volume=%f", v.Volume))
-	args = append(args, "-c:a", "aac", outPath)
+	args = append(args, "-c:a", "aac", "-f", "mp4", outPath)
 
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 
