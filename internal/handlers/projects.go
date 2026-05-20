@@ -185,8 +185,6 @@ func DeleteProject(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// getUserID extracts the authenticated user's ID from the JWT claims stored in the context.
-// Returns (0, false) and writes an error response if the claim is missing or has an unexpected type.
 func getUserID(c *gin.Context) (uint, bool) {
 	userClaims, exists := c.Get("id")
 	if !exists {

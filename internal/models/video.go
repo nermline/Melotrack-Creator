@@ -12,5 +12,5 @@ type Video struct {
 	CropWidth        int
 	CropHeight       int
 	ProcessingStatus string `gorm:"default:'ready'"`
-	ReadyFilePath    string
+	ReadyFilePath    string `json:"-"`
 }
