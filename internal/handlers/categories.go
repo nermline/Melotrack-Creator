@@ -22,14 +22,9 @@ type UpdateCategoryInput struct {
 
 func GetCategories(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID, ok := getUserID(c)
-		if !ok {
-			return
-		}
-
 		projectID := c.Param("pid")
 
-		if !verifyProjectOwnership(c, db, projectID, userID) {
+		if !projectExists(c, db, projectID) {
 			return
 		}
 
@@ -62,14 +57,9 @@ func CreateCategory(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		userID, ok := getUserID(c)
-		if !ok {
-			return
-		}
-
 		projectIDStr := c.Param("pid")
 
-		if !verifyProjectOwnership(c, db, projectIDStr, userID) {
+		if !projectExists(c, db, projectIDStr) {
 			return
 		}
 
@@ -122,15 +112,10 @@ func UpdateCategory(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		userID, ok := getUserID(c)
-		if !ok {
-			return
-		}
-
 		projectID := c.Param("pid")
 		categoryID := c.Param("cid")
 
-		if !verifyProjectOwnership(c, db, projectID, userID) {
+		if !projectExists(c, db, projectID) {
 			return
 		}
 
@@ -201,14 +186,10 @@ func UpdateCategory(db *gorm.DB) gin.HandlerFunc {
 
 func DeleteCategory(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID, ok := getUserID(c)
-		if !ok {
-			return
-		}
 		projectID := c.Param("pid")
 		categoryID := c.Param("cid")
 
-		if !verifyProjectOwnership(c, db, projectID, userID) {
+		if !projectExists(c, db, projectID) {
 			return
 		}
 
@@ -250,14 +231,15 @@ func DeleteCategory(db *gorm.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{"message": "category and all its media deleted successfully"})
 	}
 }
-func verifyProjectOwnership(c *gin.Context, db *gorm.DB, projectID string, userID uint) bool {
-	var project models.Project
-	if err := db.Select("id").Where("id = ? AND user_id = ?", projectID, userID).First(&project).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
-		}
+// projectExists перевіряє, що проєкт існує (без перевірки власника — проєкти спільні).
+func projectExists(c *gin.Context, db *gorm.DB, projectID string) bool {
+	var count int64
+	if err := db.Model(&models.Project{}).Where("id = ?", projectID).Count(&count).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		return false
+	}
+	if count == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
 		return false
 	}
 	return true

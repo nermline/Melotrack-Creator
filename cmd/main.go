@@ -18,7 +18,7 @@ func main() {
 		log.Fatalf("main(): %v", err)
 	}
 
-	db, err := database.InitDB(cfg.DBLocation, cfg.AdminPassword)
+	db, err := database.InitDB(cfg.DBLocation, cfg.AdminPassword, cfg.EditorPassword, cfg.OperatorPassword)
 	if err != nil {
 		log.Fatalf("main(): %v", err)
 	}

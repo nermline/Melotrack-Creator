@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/gorilla/websocket"
+	"gorm.io/gorm"
 )
 
 var Upgrader = websocket.Upgrader{
@@ -28,7 +29,7 @@ func NewHub() *Hub {
 	}
 }
 
-func (h *Hub) GetOrCreateGameSession(projectID string) *GameSession {
+func (h *Hub) GetOrCreateGameSession(db *gorm.DB, projectID string) *GameSession {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -38,12 +39,17 @@ func (h *Hub) GetOrCreateGameSession(projectID string) *GameSession {
 
 	session := &GameSession{
 		ProjectID: projectID,
+		db:        db,
+		Clients:   make(map[*GameClient]bool),
 		State: GameState{
 			ProjectID: projectID,
-			Status:    "welcome",
+			Phase:     PhaseWelcome,
 		},
-		Clients: make(map[*GameClient]bool),
 	}
+	// Завантажуємо знімок проєкту, щоб одразу знати кількість категорій.
+	session.Categories = loadSnapshot(db, projectID)
+	session.State.TotalCategories = len(session.Categories)
+
 	h.GameSessions[projectID] = session
 	return session
 }

@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"errors"
+	"fmt"
 	_ "image/png"
 	"net/http"
 	"strconv"
@@ -71,8 +72,9 @@ type UpdateQuizItemInput struct {
 	Answer    *UpdateAnswerInput `json:"answer"`
 }
 
-func verifyCategoryOwnership(c *gin.Context, db *gorm.DB, projectID string, categoryID string, userID uint) bool {
-	if !verifyProjectOwnership(c, db, projectID, userID) {
+// categoryExists перевіряє, що категорія існує в межах проєкту (проєкти спільні).
+func categoryExists(c *gin.Context, db *gorm.DB, projectID string, categoryID string) bool {
+	if !projectExists(c, db, projectID) {
 		return false
 	}
 	var count int64
@@ -86,15 +88,10 @@ func verifyCategoryOwnership(c *gin.Context, db *gorm.DB, projectID string, cate
 
 func GetQuizItems(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID, ok := getUserID(c)
-		if !ok {
-			return
-		}
-
 		projectID := c.Param("pid")
 		categoryID := c.Param("cid")
 
-		if !verifyCategoryOwnership(c, db, projectID, categoryID, userID) {
+		if !categoryExists(c, db, projectID, categoryID) {
 			return
 		}
 
@@ -120,15 +117,10 @@ func CreateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 			return
 		}
 
-		userID, ok := getUserID(c)
-		if !ok {
-			return
-		}
-
 		projectID := c.Param("pid")
 		categoryIDStr := c.Param("cid")
 
-		if !verifyCategoryOwnership(c, db, projectID, categoryIDStr, userID) {
+		if !categoryExists(c, db, projectID, categoryIDStr) {
 			return
 		}
 
@@ -138,6 +130,8 @@ func CreateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid youtube url"})
 			return
 		}
+		// Зберігаємо очищений URL (без &list= та інших параметрів плейлисту)
+		cleanYtURL := fmt.Sprintf("https://www.youtube.com/watch?v=%s", ytID)
 
 		var item models.QuizItem
 		var mediaFile models.Media
@@ -170,7 +164,7 @@ func CreateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 				CategoryID: uint(categoryID),
 				Position:   maxPosition + 1,
 				Video: models.Video{
-					YouTubeURL:   input.Video.YoutubeURL,
+					YouTubeURL:   cleanYtURL,
 					MediaID:      &mediaFile.ID,
 					StartTime:    input.Video.StartTime,
 					EndTime:      input.Video.EndTime,
@@ -217,6 +211,53 @@ func CreateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 	}
 }
 
+// validateVideoCropParams перевіряє коректність часових меж та crop-прямокутника
+// відносно реальних розмірів і тривалості завантаженого відео.
+// Якщо метадані ще не заповнені (width/height/duration == 0) — пропускаємо перевірку.
+func validateVideoCropParams(v models.Video, m models.Media) error {
+	if m.Width == 0 || m.Height == 0 || m.Duration == 0 {
+		return nil // метадані ще не завантажені, перевірка пізніше
+	}
+
+	// Часові мітки
+	if v.StartTime < 0 {
+		return fmt.Errorf("start_time не може бути від'ємним")
+	}
+	if v.EndTime > 0 && v.EndTime <= v.StartTime {
+		return fmt.Errorf("end_time (%.2f) має бути більшим за start_time (%.2f)", v.EndTime, v.StartTime)
+	}
+	if v.StartTime >= m.Duration {
+		return fmt.Errorf("start_time (%.2fs) виходить за межі тривалості відео (%.2fs)", v.StartTime, m.Duration)
+	}
+	if v.EndTime > 0 && v.EndTime > m.Duration {
+		return fmt.Errorf("end_time (%.2fs) виходить за межі тривалості відео (%.2fs)", v.EndTime, m.Duration)
+	}
+
+	// Crop-прямокутник (перевіряємо лише якщо задано)
+	if v.CropWidth > 0 || v.CropHeight > 0 {
+		if v.CropX < 0 {
+			return fmt.Errorf("crop_x не може бути від'ємним")
+		}
+		if v.CropY < 0 {
+			return fmt.Errorf("crop_y не може бути від'ємним")
+		}
+		if v.CropWidth <= 0 {
+			return fmt.Errorf("crop_width має бути більшим за 0")
+		}
+		if v.CropHeight <= 0 {
+			return fmt.Errorf("crop_height має бути більшим за 0")
+		}
+		if v.CropX+v.CropWidth > m.Width {
+			return fmt.Errorf("crop виходить за правий край: x(%d)+w(%d)=%d > ширина відео(%d)", v.CropX, v.CropWidth, v.CropX+v.CropWidth, m.Width)
+		}
+		if v.CropY+v.CropHeight > m.Height {
+			return fmt.Errorf("crop виходить за нижній край: y(%d)+h(%d)=%d > висота відео(%d)", v.CropY, v.CropHeight, v.CropY+v.CropHeight, m.Height)
+		}
+	}
+
+	return nil
+}
+
 func UpdateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input UpdateQuizItemInput
@@ -225,16 +266,11 @@ func UpdateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 			return
 		}
 
-		userID, ok := getUserID(c)
-		if !ok {
-			return
-		}
-
 		projectID := c.Param("pid")
 		categoryID := c.Param("cid")
 		itemID := c.Param("iid")
 
-		if !verifyCategoryOwnership(c, db, projectID, categoryID, userID) {
+		if !categoryExists(c, db, projectID, categoryID) {
 			return
 		}
 
@@ -243,6 +279,7 @@ func UpdateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 		var paramsChanged bool
 		var newMediaFile models.Media
 		var needDownload bool
+		var validationErr error // відокремлюємо помилки валідації від DB-помилок
 
 		err := db.Transaction(func(tx *gorm.DB) error {
 			if err := tx.Preload("Answer").Preload("Video.Media").Where("id = ? AND category_id = ?", itemID, categoryID).First(&updatedItem).Error; err != nil {
@@ -256,9 +293,10 @@ func UpdateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 			if input.Video != nil {
 				if input.Video.YoutubeURL != nil && updatedItem.Video.YouTubeURL != *input.Video.YoutubeURL {
 					urlChanged = true
-					updatedItem.Video.YouTubeURL = *input.Video.YoutubeURL
-
 					ytID := media.ExtractYouTubeID(*input.Video.YoutubeURL)
+					// Зберігаємо очищений URL (без &list= тощо)
+					updatedItem.Video.YouTubeURL = fmt.Sprintf("https://www.youtube.com/watch?v=%s", ytID)
+
 					err := tx.Where("you_tube_id = ?", ytID).First(&newMediaFile).Error
 					if errors.Is(err, gorm.ErrRecordNotFound) {
 						newMediaFile = models.Media{
@@ -349,9 +387,19 @@ func UpdateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 				updatedItem.Video.RenderStatus = "unrendered"
 			}
 
+			// Валідація crop та часових меж відносно реальних розмірів відео
+			if ve := validateVideoCropParams(updatedItem.Video, updatedItem.Video.Media); ve != nil {
+				validationErr = ve
+				return ve
+			}
+
 			return tx.Save(&updatedItem).Error
 		})
 
+		if validationErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
+			return
+		}
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "item not found"})
@@ -384,16 +432,11 @@ func UpdateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 // RenderQuizItem - новий ендпоінт для застосування налаштувань (ffmpeg)
 func RenderQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID, ok := getUserID(c)
-		if !ok {
-			return
-		}
-
 		projectID := c.Param("pid")
 		categoryID := c.Param("cid")
 		itemID := c.Param("iid")
 
-		if !verifyCategoryOwnership(c, db, projectID, categoryID, userID) {
+		if !categoryExists(c, db, projectID, categoryID) {
 			return
 		}
 
@@ -405,6 +448,12 @@ func RenderQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 
 		if item.Video.Media.Status != "ready" {
 			c.JSON(http.StatusConflict, gin.H{"error": "Original video is still downloading or encountered an error"})
+			return
+		}
+
+		// Валідація crop та часових меж відносно реальних розмірів відео
+		if err := validateVideoCropParams(item.Video, item.Video.Media); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
@@ -435,16 +484,11 @@ func RenderQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 
 func DeleteQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID, ok := getUserID(c)
-		if !ok {
-			return
-		}
-
 		projectID := c.Param("pid")
 		categoryID := c.Param("cid")
 		itemID := c.Param("iid")
 
-		if !verifyCategoryOwnership(c, db, projectID, categoryID, userID) {
+		if !categoryExists(c, db, projectID, categoryID) {
 			return
 		}
 

@@ -24,9 +24,16 @@ func StartDownloadWorker(ctx context.Context, db *gorm.DB, mediaID uint, youtube
 		return
 	}
 
+	// Отримуємо метадані відео (розміри, тривалість) через ffprobe.
+	// Зберігаємо в БД для подальшої валідації crop-параметрів на сервері та фронті.
+	width, height, duration := GetVideoMetadata(rawPath)
+
 	db.Model(&mediaFile).Updates(map[string]interface{}{
 		"status":    "ready",
 		"file_path": rawPath,
+		"width":     width,
+		"height":    height,
+		"duration":  duration,
 	})
 }
 

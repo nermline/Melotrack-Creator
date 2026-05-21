@@ -23,14 +23,9 @@ type ProjectInput struct {
 
 func GetProjects(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID, ok := getUserID(c)
-		if !ok {
-			return
-		}
-
 		var summaries []ProjectSummary
 
-		if err := db.Model(&models.Project{}).Where("user_id = ?", userID).Select("id", "title", "created_at").Find(&summaries).Error; err != nil {
+		if err := db.Model(&models.Project{}).Select("id", "title", "created_at").Order("created_at DESC").Find(&summaries).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 			return
 		}
@@ -41,11 +36,6 @@ func GetProjects(db *gorm.DB) gin.HandlerFunc {
 
 func GetProjectByID(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID, ok := getUserID(c)
-		if !ok {
-			return
-		}
-
 		projectID := c.Param("pid")
 
 		var project models.Project
@@ -55,7 +45,7 @@ func GetProjectByID(db *gorm.DB) gin.HandlerFunc {
 			Preload("Categories.Items").
 			Preload("Categories.Items.Answer").
 			Preload("Categories.Items.Media").
-			Where("id = ? AND user_id = ?", projectID, userID).
+			Where("id = ?", projectID).
 			First(&project).Error
 
 		if err != nil {
@@ -89,14 +79,8 @@ func CreateProject(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		userID, ok := getUserID(c)
-		if !ok {
-			return
-		}
-
 		project := models.Project{
-			Title:  input.Title,
-			UserID: userID,
+			Title: input.Title,
 		}
 
 		if err := db.Create(&project).Error; err != nil {
@@ -124,16 +108,11 @@ func UpdateProject(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		userID, ok := getUserID(c)
-		if !ok {
-			return
-		}
-
 		projectID := c.Param("pid")
 
 		var project models.Project
 
-		if err := db.Where("id = ? AND user_id = ?", projectID, userID).First(&project).Error; err != nil {
+		if err := db.Where("id = ?", projectID).First(&project).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
 				c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
 				return
@@ -163,16 +142,11 @@ func UpdateProject(db *gorm.DB) gin.HandlerFunc {
 
 func DeleteProject(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID, ok := getUserID(c)
-		if !ok {
-			return
-		}
-
 		projectID := c.Param("pid")
 
 		media.CleanProjectMedia(projectID)
 
-		result := db.Unscoped().Where("id = ? AND user_id = ?", projectID, userID).Delete(&models.Project{})
+		result := db.Unscoped().Where("id = ?", projectID).Delete(&models.Project{})
 
 		if result.Error != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete project"})
@@ -186,28 +160,6 @@ func DeleteProject(db *gorm.DB) gin.HandlerFunc {
 
 		c.JSON(http.StatusOK, gin.H{"message": "project and all its associated media deleted successfully"})
 	}
-}
-
-func getUserID(c *gin.Context) (uint, bool) {
-	userClaims, exists := c.Get("id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-		return 0, false
-	}
-
-	claims, ok := userClaims.(map[string]interface{})
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-		return 0, false
-	}
-
-	idFloat, ok := claims["id"].(float64)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-		return 0, false
-	}
-
-	return uint(idFloat), true
 }
 
 func isUniqueErr(err error) bool {

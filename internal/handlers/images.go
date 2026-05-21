@@ -19,16 +19,11 @@ import (
 // конвертує у стандартний JPEG та зберігає.
 func UploadAnswerImage(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID, ok := getUserID(c)
-		if !ok {
-			return
-		}
-
 		projectID := c.Param("pid")
 		categoryID := c.Param("cid")
 		itemID := c.Param("iid")
 
-		if !verifyCategoryOwnership(c, db, projectID, categoryID, userID) {
+		if !categoryExists(c, db, projectID, categoryID) {
 			return
 		}
 
@@ -104,16 +99,11 @@ func UploadAnswerImage(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 
 func DeleteQuizItemImage(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID, ok := getUserID(c)
-		if !ok {
-			return
-		}
-
 		projectID := c.Param("pid")
 		categoryID := c.Param("cid")
 		itemID := c.Param("iid")
 
-		if !verifyCategoryOwnership(c, db, projectID, categoryID, userID) {
+		if !categoryExists(c, db, projectID, categoryID) {
 			return
 		}
 

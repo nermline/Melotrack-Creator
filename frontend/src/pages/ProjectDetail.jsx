@@ -153,6 +153,7 @@ export default function ProjectDetail() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
                     <h1 style={{ margin: 0 }}>{project?.title}</h1>
                     <button onClick={() => { setEditingTitle(true); setTitleError(''); }}>✏️</button>
+                    <button onClick={() => navigate(`/projects/${pid}/play`)}>▶ Показ</button>
                     <button onClick={handleDeleteProject} style={{ color: 'red' }}>🗑 Видалити проєкт</button>
                 </div>
             )}

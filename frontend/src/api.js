@@ -1,7 +1,10 @@
 import axios from 'axios';
 
+// Порожній baseURL → усі запити відносні до поточного origin.
+// У продакшені фронтенд роздається з того ж Go-сервера (:8080), а у dev
+// Vite проксує /api, /login, /refresh, /media тощо на бекенд (див. vite.config.js).
 const api = axios.create({
-    baseURL: 'http://localhost:8080',
+    baseURL: '',
     headers: {
         'Content-Type': 'application/json',
     },
@@ -33,7 +36,7 @@ api.interceptors.response.use(
 
             originalRequest._retry = true;
             try {
-                const response = await axios.get('http://localhost:8080/refresh', {
+                const response = await axios.get('/refresh', {
                     headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
                 });
                 

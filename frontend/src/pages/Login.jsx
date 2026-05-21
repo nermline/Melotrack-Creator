@@ -25,6 +25,13 @@ export default function Login() {
 
                 if (actualToken && typeof actualToken === 'string') {
                     localStorage.setItem('token', actualToken);
+                    // Дістаємо роль з payload JWT, щоб показувати відповідні дії показу.
+                    try {
+                        const payload = JSON.parse(atob(actualToken.split('.')[1]));
+                        localStorage.setItem('role', payload.role || '');
+                    } catch {
+                        localStorage.removeItem('role');
+                    }
                     navigate('/');
                 } else {
                     setError('Сервер не повернув токен. Перевір консоль (F12).');

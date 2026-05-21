@@ -9,13 +9,14 @@ import (
 	"gorm.io/gorm"
 )
 
-const defaultAdminUsername = "admin"
-
-func InitDB(path string, adminPassword string) (*gorm.DB, error) {
+func InitDB(path string, adminPassword, editorPassword, operatorPassword string) (*gorm.DB, error) {
 	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("initDB(): gorm.Open() Failed to open DB: %v", err)
 	}
+
+	// Прибираємо застарілу схему власності проєктів до AutoMigrate.
+	migrateLegacyProjectOwnership(db)
 
 	err = db.AutoMigrate(
 		&models.Role{},
@@ -33,11 +34,35 @@ func InitDB(path string, adminPassword string) (*gorm.DB, error) {
 
 	seedRoles(db)
 
-	if err := seedAdmin(db, adminPassword); err != nil {
-		return nil, fmt.Errorf("InitDB(): %v", err)
+	// Початкові акаунти: адмін (повний доступ), редактор (створення/редагування),
+	// оператор (лише читання — для показу як екран або пульт).
+	seeds := []struct{ username, password, role string }{
+		{"admin", adminPassword, "admin"},
+		{"editor", editorPassword, "editor"},
+		{"operator", operatorPassword, "operator"},
+	}
+	for _, s := range seeds {
+		if err := seedUser(db, s.username, s.password, s.role); err != nil {
+			return nil, fmt.Errorf("InitDB(): %v", err)
+		}
 	}
 
 	return db, nil
+}
+
+// migrateLegacyProjectOwnership видаляє застарілий стовпець user_id та композитний
+// унікальний індекс (user_id, title) з таблиці projects. Раніше проєкти належали
+// конкретному користувачу; тепер вони спільні для всіх (self-hosted).
+func migrateLegacyProjectOwnership(db *gorm.DB) {
+	m := db.Migrator()
+	if !m.HasTable(&models.Project{}) {
+		return
+	}
+	if m.HasColumn(&models.Project{}, "user_id") {
+		// Спершу прибираємо індекс, що залежить від стовпця, потім сам стовпець.
+		_ = db.Exec("DROP INDEX IF EXISTS idx_user_title").Error
+		_ = m.DropColumn(&models.Project{}, "user_id")
+	}
 }
 
 func seedRoles(db *gorm.DB) {
@@ -47,30 +72,28 @@ func seedRoles(db *gorm.DB) {
 	}
 }
 
-func seedAdmin(db *gorm.DB, adminPassword string) error {
-	var adminRole models.Role
-
-	if err := db.Where("name = ?", "admin").First(&adminRole).Error; err != nil {
-		return fmt.Errorf("seedAdmin(): db.Where(): Failed to find admin role in DB: %v", err)
+// seedUser створює користувача з заданою роллю, якщо його ще немає.
+func seedUser(db *gorm.DB, username, password, roleName string) error {
+	var role models.Role
+	if err := db.Where("name = ?", roleName).First(&role).Error; err != nil {
+		return fmt.Errorf("seedUser(%q): role %q not found: %v", username, roleName, err)
 	}
 
 	var count int64
-	db.Model(&models.User{}).Where("username = ?", defaultAdminUsername).Count(&count)
-
-	if count == 0 {
-		hash, err := bcrypt.GenerateFromPassword([]byte(adminPassword), bcrypt.DefaultCost)
-		if err != nil {
-			return fmt.Errorf("seedAdmin(): bcrypt.GenerateFromPassword(): Failed to generate hash: %v", err)
-		}
-
-		admin := models.User{
-			Username: defaultAdminUsername,
-			Password: string(hash),
-			RoleID:   adminRole.ID,
-		}
-
-		db.FirstOrCreate(&models.User{}, admin)
+	db.Model(&models.User{}).Where("username = ?", username).Count(&count)
+	if count > 0 {
+		return nil
 	}
 
-	return nil
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("seedUser(%q): GenerateFromPassword: %v", username, err)
+	}
+
+	user := models.User{
+		Username: username,
+		Password: string(hash),
+		RoleID:   role.ID,
+	}
+	return db.FirstOrCreate(&models.User{}, user).Error
 }

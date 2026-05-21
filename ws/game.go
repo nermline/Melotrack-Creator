@@ -8,13 +8,23 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"gorm.io/gorm"
 )
 
+// GameSession — авторитетна ігрова сесія одного проєкту.
+// Один мьютекс (mu) захищає одночасно стан, знімок, таймер і список клієнтів,
+// бо таймерний колбек і команди пульта змінюють їх із різних горутин.
 type GameSession struct {
-	ProjectID string
-	State     GameState
-	Clients   map[*GameClient]bool
-	mu        sync.RWMutex
+	ProjectID  string
+	db         *gorm.DB
+	Categories []gameCategory
+	State      GameState
+	Clients    map[*GameClient]bool
+
+	timer    *time.Timer
+	timerGen int
+
+	mu sync.Mutex
 }
 
 type GameClient struct {
@@ -26,15 +36,15 @@ type GameClient struct {
 
 func (s *GameSession) Register(c *GameClient) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.Clients[c] = true
-	s.mu.Unlock()
-
-	// Відправляємо поточний стан тільки новому клієнту
-	s.mu.RLock()
-	stateCopy := s.State
-	s.mu.RUnlock()
-
-	c.Send <- GameOutgoingMessage{Event: "state_updated", State: stateCopy}
+	// Новому клієнту одразу надсилаємо поточний стан.
+	msg := GameOutgoingMessage{Event: "state_updated", State: s.State}
+	msg.State.ServerNow = nowMs()
+	select {
+	case c.Send <- msg:
+	default:
+	}
 }
 
 func (s *GameSession) Unregister(c *GameClient) {
@@ -46,24 +56,46 @@ func (s *GameSession) Unregister(c *GameClient) {
 	}
 }
 
-func (s *GameSession) UpdateState(newState GameState) {
+// HandleCommand обробляє команду від пульта (тільки screen/remote з роллю remote).
+func (s *GameSession) HandleCommand(action string, value float64) {
 	s.mu.Lock()
-	s.State = newState
-	s.mu.Unlock()
-	s.Broadcast()
+	defer s.mu.Unlock()
+
+	switch action {
+	case "start":
+		s.reloadLocked()
+		s.startLocked()
+	case "next":
+		s.advanceLocked()
+	case "advance":
+		s.advanceLocked()
+	case "back":
+		s.backLocked()
+	case "pause":
+		s.pauseLocked()
+	case "resume":
+		s.resumeLocked()
+	case "seek":
+		s.seekLocked(int64(value * 1000))
+	case "reset":
+		s.reloadLocked()
+		s.resetLocked()
+	default:
+		return
+	}
+
+	s.broadcastLocked()
 }
 
-func (s *GameSession) Broadcast() {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
+// broadcastLocked розсилає поточний стан усім клієнтам (s.mu має бути взято).
+func (s *GameSession) broadcastLocked() {
 	msg := GameOutgoingMessage{Event: "state_updated", State: s.State}
-
+	msg.State.ServerNow = nowMs()
 	for client := range s.Clients {
 		select {
 		case client.Send <- msg:
 		default:
-			// Якщо канал забитий, ігноруємо. Мертвий клієнт відвалиться в readPump
+			// Канал забитий — мертвий клієнт відвалиться у readPump.
 		}
 	}
 }
@@ -80,11 +112,14 @@ func (c *GameClient) readPump() {
 			break
 		}
 
+		// Команди приймаємо лише від пульта, щоб екран не міг керувати показом.
+		if c.Role != "remote" {
+			continue
+		}
+
 		var msg GameIncomingMessage
-		if err := json.Unmarshal(message, &msg); err == nil {
-			if msg.Action == "update_state" {
-				c.Session.UpdateState(msg.NewState)
-			}
+		if err := json.Unmarshal(message, &msg); err == nil && msg.Action != "" {
+			c.Session.HandleCommand(msg.Action, msg.Value)
 		}
 	}
 }
@@ -116,7 +151,7 @@ func (c *GameClient) writePump() {
 	}
 }
 
-func ServeGameWS(hub *Hub) gin.HandlerFunc {
+func ServeGameWS(db *gorm.DB, hub *Hub) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		projectID := c.Param("pid")
 		role := c.Query("role")
@@ -131,7 +166,7 @@ func ServeGameWS(hub *Hub) gin.HandlerFunc {
 			return
 		}
 
-		session := hub.GetOrCreateGameSession(projectID)
+		session := hub.GetOrCreateGameSession(db, projectID)
 		client := &GameClient{
 			Session: session,
 			Conn:    conn,

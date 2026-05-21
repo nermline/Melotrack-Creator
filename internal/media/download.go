@@ -27,6 +27,11 @@ func DownloadRawVideo(ctx context.Context, youtubeURL string) (string, string, e
 
 	mediaID := ExtractYouTubeID(youtubeURL)
 
+	// Очищаємо URL від &list=... та інших параметрів, які змушують yt-dlp
+	// завантажувати весь плейлист замість конкретного відео.
+	// Без цього rename може впасти → статус Media ніколи не стане "ready".
+	cleanURL := fmt.Sprintf("https://www.youtube.com/watch?v=%s", mediaID)
+
 	outPath := fmt.Sprintf("./downloads/raw/%s.mp4", mediaID)
 
 	tmpBase := fmt.Sprintf("./downloads/raw/%s.tmp", mediaID)
@@ -41,7 +46,7 @@ func DownloadRawVideo(ctx context.Context, youtubeURL string) (string, string, e
 		MergeOutputFormat("mp4").
 		Output(tmpBase)
 
-	res, err := dl.Run(ctx, youtubeURL)
+	res, err := dl.Run(ctx, cleanURL)
 	if err != nil {
 		_ = os.Remove(tmpActualPath)
 		return "", "", fmt.Errorf("помилка завантаження yt-dlp: %w", err)
