@@ -135,8 +135,18 @@ function useEditorWS(cid, onMessage) {
     return { wsStatus, sendMessage };
 }
 
+// Плейсхолдер для рамки без завантаженого фото (значок + підпис).
+function EditorPhotoPlaceholder({ label = 'нема фото', size = 28 }) {
+    return (
+        <div className="flex flex-col items-center justify-center gap-1" style={{ color: 'var(--color-muted)' }}>
+            <span style={{ fontSize: size, lineHeight: 1, opacity: 0.7 }}>🖼</span>
+            <span className="text-xs">{label}</span>
+        </div>
+    );
+}
+
 // ─── Рядок списку (зліва, з drag-реордером) ─────────────────────────────────
-function ItemRow({ item, index, selected, dirty, onSelect, onRender, onCommit }) {
+function ItemRow({ item, index, selected, dirty, onSelect, onRender, onRetry, onCommit }) {
     const controls = useDragControls();
     const token = localStorage.getItem('token');
     const img = item.answer?.image_path ? `${API_BASE}${item.answer.image_path}?token=${token}` : null;
@@ -161,9 +171,12 @@ function ItemRow({ item, index, selected, dirty, onSelect, onRender, onCommit })
                     onClick={(e) => e.stopPropagation()}>⠿</div>
                 <span className="text-xs" style={{ color: 'var(--color-muted)', minWidth: 18 }}>{index + 1}</span>
                 <div style={{ width: 40, height: 40, borderRadius: 8, overflow: 'hidden', flexShrink: 0,
-                    background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                    {img && <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        onError={(e) => { e.target.style.display = 'none'; }} />}
+                    background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                    display: 'grid', placeItems: 'center' }}>
+                    {img
+                        ? <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            onError={(e) => { e.target.style.display = 'none'; }} />
+                        : <span title="нема фото" style={{ fontSize: 16, opacity: 0.5 }}>🖼</span>}
                 </div>
                 <div className="flex-1 min-w-0">
                     <div className="truncate font-medium" style={{ color: '#fff' }}>
@@ -176,6 +189,13 @@ function ItemRow({ item, index, selected, dirty, onSelect, onRender, onCommit })
                         <Badge tone={rTone}>{renderBadge(item.video?.render_status)[1]}</Badge>
                     </div>
                 </div>
+                {item.video?.media?.status === 'error' && (
+                    <span role="button" tabIndex={0} title="Спробувати завантажити ще раз"
+                        onClick={(e) => { e.stopPropagation(); onRetry(item.id); }}
+                        style={{ color: 'var(--color-danger)', cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap', padding: '0 4px' }}>
+                        ↻ ще раз
+                    </span>
+                )}
                 {mediaReady && item.video?.render_status !== 'rendering' && (
                     <span role="button" tabIndex={0} title="Зробити кліп (рендер)"
                         onClick={(e) => { e.stopPropagation(); onRender(item.id); }}
@@ -190,7 +210,7 @@ function ItemRow({ item, index, selected, dirty, onSelect, onRender, onCommit })
 
 // ─── Налаштування питання (праворуч) — керована чернетка зверху ─────────────
 function ItemSettings({ item, draft, onChange, pid, cid, renderVersion, imageVersion,
-    onSave, onRender, onDelete, onReset }) {
+    onSave, onRender, onDelete, onReset, onRetry }) {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [filePreview, setFilePreview] = useState(null);
@@ -270,6 +290,18 @@ function ItemSettings({ item, draft, onChange, pid, cid, renderVersion, imageVer
                 <Button size="sm" variant="primary" disabled={!mediaReady} title={!mediaReady ? 'Відео ще завантажується' : ''}
                     onClick={() => setVideoModal(true)}>✂ Обрізати / вмістити + час</Button>
             </div>
+            {media?.status === 'error' && (
+                <div className="mb-2 flex items-center justify-between gap-2 flex-wrap p-2 rounded-lg"
+                    style={{ background: 'rgba(244,96,122,0.12)', border: '1px solid rgba(244,96,122,0.35)' }}>
+                    <span className="text-sm" style={{ color: 'var(--color-danger)' }}>⚠️ Не вдалося завантажити відео</span>
+                    <Button size="sm" onClick={() => onRetry(item.id)}>↻ Спробувати ще раз</Button>
+                </div>
+            )}
+            {media?.status === 'downloading' && (
+                <div className="mb-2 text-sm flex items-center gap-2" style={{ color: 'var(--color-warn)' }}>
+                    <Spinner size={14} /> Відео завантажується…
+                </div>
+            )}
             <div style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)',
                 maxWidth: 'min(1000px, calc(52vh * 16 / 9))' }}>
                 {renderedVideoUrl ? (
@@ -316,7 +348,7 @@ function ItemSettings({ item, draft, onChange, pid, cid, renderVersion, imageVer
                         border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.04)', display: 'grid', placeItems: 'center' }}>
                         {displayImg
                             ? <img src={displayImg} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.target.style.display = 'none'; }} />
-                            : <span className="text-sm" style={{ color: 'var(--color-muted)' }}>{stagedDelete ? 'буде видалено' : 'немає фото'}</span>}
+                            : <EditorPhotoPlaceholder label={stagedDelete ? 'буде видалено' : 'нема фото'} size={40} />}
                     </div>
                     <div className="mt-2 flex flex-wrap gap-2">
                         <Button size="sm" onClick={pickPhoto}>{displayImg ? '🔄 Замінити' : '+ Фото'}</Button>
@@ -458,7 +490,7 @@ export default function CategoryDetail() {
         if (action === 'item_deleted' && itemId === selectedIdRef.current) setSelectedId(null);
         setItems((prev) => {
             switch (action) {
-                case 'item_created': return prev.some((i) => i.id === itemId) ? prev : [...prev, data];
+                case 'item_created': return (!data || prev.some((i) => i.id === data.id)) ? prev : [...prev, data];
                 case 'item_updated': return prev.map((i) => i.id === itemId ? data : i);
                 case 'item_deleted': return prev.filter((i) => i.id !== itemId);
                 case 'item_rendering':
@@ -566,6 +598,17 @@ export default function CategoryDetail() {
         } catch (err) { alert(err.response?.data?.error || 'Помилка рендеру'); }
     };
 
+    // Перезапуск завантаження для відео, що провалилось (кнопка "спробувати ще раз").
+    const handleRetryDownload = async (itemId) => {
+        try {
+            await api.post(`/api/projects/${pid}/categories/${cid}/items/${itemId}/redownload`);
+            // Оптимістично переводимо media у "downloading" → запускається опитування статусу.
+            setItems((prev) => prev.map((i) => i.id === itemId
+                ? { ...i, video: { ...i.video, media: { ...(i.video?.media || {}), status: 'downloading' } } }
+                : i));
+        } catch (err) { alert(err.response?.data?.error || 'Не вдалося перезапустити завантаження'); }
+    };
+
     const commitReorder = useCallback(async (id) => {
         const arr = itemsRef.current;
         const newIndex = arr.findIndex((i) => i.id === id);
@@ -611,7 +654,7 @@ export default function CategoryDetail() {
                                 {items.map((item, idx) => (
                                     <ItemRow key={item.id} item={item} index={idx}
                                         selected={selectedId === item.id} dirty={dirtyIds.has(item.id)}
-                                        onSelect={selectItem} onRender={handleRender} onCommit={commitReorder} />
+                                        onSelect={selectItem} onRender={handleRender} onRetry={handleRetryDownload} onCommit={commitReorder} />
                                 ))}
                             </Reorder.Group>
                         )}
@@ -630,7 +673,7 @@ export default function CategoryDetail() {
                             {isCreating ? (
                                 <motion.div key="create" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                                     <CreateForm pid={pid} cid={cid} onDirty={setCreateDirty}
-                                        onCreate={(item) => { setItems((p) => [...p, item]); setIsCreating(false); setSelectedId(item.id); }}
+                                        onCreate={(item) => { setItems((p) => p.some((i) => i.id === item.id) ? p : [...p, item]); setIsCreating(false); setSelectedId(item.id); }}
                                         onCancel={() => setIsCreating(false)} />
                                 </motion.div>
                             ) : selectedItem ? (
@@ -640,7 +683,7 @@ export default function CategoryDetail() {
                                         onChange={(patch) => updateDraft(selectedItem.id, patch)}
                                         renderVersion={renderVersions[selectedItem.id] ?? 0}
                                         imageVersion={imageVersions[selectedItem.id] ?? 0}
-                                        onSave={saveItem} onRender={handleRender} onDelete={handleDelete} onReset={resetDraft} />
+                                        onSave={saveItem} onRender={handleRender} onDelete={handleDelete} onReset={resetDraft} onRetry={handleRetryDownload} />
                                 </motion.div>
                             ) : (
                                 <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }}

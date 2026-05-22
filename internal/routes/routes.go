@@ -56,6 +56,7 @@ func Setup(r *gin.Engine, db *gorm.DB, authMiddleware *jwt.GinJWTMiddleware) {
 		api.GET("/projects/:pid/categories/:cid/items", handlers.GetQuizItems(db))
 		api.POST("/projects/:pid/categories/:cid/items", handlers.CreateQuizItem(db, hub))
 		api.POST("/projects/:pid/categories/:cid/items/:iid/render", handlers.RenderQuizItem(db, hub))
+		api.POST("/projects/:pid/categories/:cid/items/:iid/redownload", handlers.RetryDownload(db, hub))
 		api.POST("/projects/:pid/categories/:cid/items/:iid/image", handlers.UploadAnswerImage(db, hub))
 		api.DELETE("/projects/:pid/categories/:cid/items/:iid/image", handlers.DeleteQuizItemImage(db, hub))
 		api.PUT("/projects/:pid/categories/:cid/items/:iid", handlers.UpdateQuizItem(db, hub))

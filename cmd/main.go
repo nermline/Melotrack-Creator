@@ -34,7 +34,9 @@ func main() {
 
 	routes.Setup(r, db, authMiddleware)
 
-	if err := r.Run(":8080"); err != nil {
+	addr := cfg.ListenAddr()
+	log.Printf("main(): сервер слухає на %s", addr)
+	if err := r.Run(addr); err != nil {
 		log.Fatalf("main(): %v", err)
 	}
 }

@@ -21,6 +21,32 @@ var (
 	activeRenderWorkers   sync.Map // itemID -> cancelFunc
 )
 
+// triggerDownload запускає фонове завантаження оригіналу для media у горутині.
+// Винесено у змінну, щоб тести могли підмінити її без реального виклику yt-dlp.
+// Якщо для цього media вже активне завантаження — повторно не запускає.
+var triggerDownload = func(db *gorm.DB, mediaID uint, url string) {
+	if _, active := activeDownloadWorkers.Load(mediaID); active {
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	activeDownloadWorkers.Store(mediaID, cancel)
+	go func() {
+		defer activeDownloadWorkers.Delete(mediaID)
+		media.StartDownloadWorker(ctx, db, mediaID, url)
+	}()
+}
+
+// triggerRender запускає фоновий рендер (ffmpeg) у горутині. Винесено у змінну,
+// щоб тести могли підмінити її без реального виклику ffmpeg.
+var triggerRender = func(db *gorm.DB, hub *ws.Hub, item models.QuizItem, projectID, categoryID string) {
+	ctx, cancel := context.WithCancel(context.Background())
+	activeRenderWorkers.Store(item.ID, cancel)
+	go func() {
+		defer activeRenderWorkers.Delete(item.ID)
+		media.StartRenderWorker(ctx, db, hub, item, projectID, categoryID)
+	}()
+}
+
 type VideoInput struct {
 	YoutubeURL string  `json:"youtube_url"`
 	StartTime  float64 `json:"start_time"`
@@ -153,6 +179,13 @@ func CreateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 				needDownload = true
 			} else if err != nil {
 				return err
+			} else if mediaFile.Status == "error" {
+				// Попередня спроба завантаження провалилась — перезапускаємо.
+				if err := tx.Model(&mediaFile).Update("status", "downloading").Error; err != nil {
+					return err
+				}
+				mediaFile.Status = "downloading"
+				needDownload = true
 			}
 
 			// 2. Створюємо QuizItem
@@ -193,14 +226,9 @@ func CreateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 		}
 
 		// Запускаємо завантаження оригінального відео, якщо його ще немає в базі
+		// (або попередня спроба провалилась).
 		if needDownload {
-			ctx, cancel := context.WithCancel(context.Background())
-			activeDownloadWorkers.Store(mediaFile.ID, cancel)
-
-			go func(mID uint, url string) {
-				defer activeDownloadWorkers.Delete(mID)
-				media.StartDownloadWorker(ctx, db, mID, url)
-			}(mediaFile.ID, item.Video.YouTubeURL)
+			triggerDownload(db, mediaFile.ID, item.Video.YouTubeURL)
 		}
 		item.Video.Media = mediaFile
 
@@ -317,6 +345,13 @@ func UpdateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 						needDownload = true
 					} else if err != nil {
 						return err
+					} else if newMediaFile.Status == "error" {
+						// Попередня спроба провалилась — перезавантажуємо.
+						if err := tx.Model(&newMediaFile).Update("status", "downloading").Error; err != nil {
+							return err
+						}
+						newMediaFile.Status = "downloading"
+						needDownload = true
 					}
 					updatedItem.Video.MediaID = &newMediaFile.ID
 					updatedItem.Video.Media = newMediaFile
@@ -422,13 +457,7 @@ func UpdateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 		}
 
 		if needDownload {
-			ctx, cancel := context.WithCancel(context.Background())
-			activeDownloadWorkers.Store(newMediaFile.ID, cancel)
-
-			go func(mID uint, url string) {
-				defer activeDownloadWorkers.Delete(mID)
-				media.StartDownloadWorker(ctx, db, mID, url)
-			}(newMediaFile.ID, updatedItem.Video.YouTubeURL)
+			triggerDownload(db, newMediaFile.ID, updatedItem.Video.YouTubeURL)
 		}
 
 		hub.SystemBroadcast(categoryID, ws.EditorMessage{
@@ -438,6 +467,56 @@ func UpdateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 		})
 
 		c.JSON(http.StatusOK, updatedItem)
+	}
+}
+
+// RetryDownload перезапускає завантаження оригінального відео для item, чий media
+// у статусі "error" (або застряг). Дозволяє кнопці "спробувати ще раз" на фронті
+// перезавантажити відео без повторного створення елемента.
+func RetryDownload(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		projectID := c.Param("pid")
+		categoryID := c.Param("cid")
+		itemID := c.Param("iid")
+
+		if !categoryExists(c, db, projectID, categoryID) {
+			return
+		}
+
+		var item models.QuizItem
+		if err := db.Preload("Video.Media").Where("id = ? AND category_id = ?", itemID, categoryID).First(&item).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "item not found"})
+			return
+		}
+
+		if item.Video.MediaID == nil || item.Video.Media.YouTubeID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "item has no associated media"})
+			return
+		}
+
+		// Якщо вже завантажується — не дублюємо.
+		if _, active := activeDownloadWorkers.Load(*item.Video.MediaID); active {
+			c.JSON(http.StatusConflict, gin.H{"error": "download already in progress"})
+			return
+		}
+
+		mID := *item.Video.MediaID
+		if err := db.Model(&models.Media{}).Where("id = ?", mID).Update("status", "downloading").Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			return
+		}
+
+		triggerDownload(db, mID, item.Video.YouTubeURL)
+
+		// Сповіщаємо редакторів, щоб оновили статус і почали опитування.
+		item.Video.Media.Status = "downloading"
+		hub.SystemBroadcast(categoryID, ws.EditorMessage{
+			Action: "item_updated",
+			ItemID: item.ID,
+			Data:   item,
+		})
+
+		c.JSON(http.StatusOK, gin.H{"status": "downloading"})
 	}
 }
 
@@ -482,13 +561,7 @@ func RenderQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 			Data:   map[string]string{"render_status": "rendering"},
 		})
 
-		ctx, cancel := context.WithCancel(context.Background())
-		activeRenderWorkers.Store(item.ID, cancel)
-
-		go func(i models.QuizItem, pID string, catID string) {
-			defer activeRenderWorkers.Delete(i.ID)
-			media.StartRenderWorker(ctx, db, hub, i, pID, catID)
-		}(item, projectID, categoryID)
+		triggerRender(db, hub, item, projectID, categoryID)
 
 		c.JSON(http.StatusOK, gin.H{"render_status": "rendering"})
 	}

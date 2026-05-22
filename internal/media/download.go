@@ -3,11 +3,17 @@ package media
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"regexp"
 
 	"github.com/lrstanley/go-ytdlp"
 )
+
+// cookiesFile — файл з кукісами YouTube у кореневій папці проєкту (опційно).
+// Якщо існує, передається yt-dlp через --cookies для доступу до відео, що
+// потребують авторизації / обходу обмежень.
+const cookiesFile = "cookies.txt"
 
 func ExtractYouTubeID(videoURL string) string {
 	re := regexp.MustCompile(`(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})`)
@@ -44,20 +50,40 @@ func DownloadRawVideo(ctx context.Context, youtubeURL string) (string, string, e
 	dl := ytdlp.New().
 		Format(formatFilter).
 		MergeOutputFormat("mp4").
+		Verbose().
+		// Логуємо кожен рядок виводу yt-dlp у консоль сервера в реальному часі.
+		StderrFunc(func(line string) {
+			log.Printf("[yt-dlp %s] %s", mediaID, line)
+		}).
 		Output(tmpBase)
+
+	// Якщо у корені проєкту лежить cookies.txt — передаємо його yt-dlp.
+	if _, err := os.Stat(cookiesFile); err == nil {
+		log.Printf("[yt-dlp %s] використовую cookies: %s", mediaID, cookiesFile)
+		dl = dl.Cookies(cookiesFile)
+	} else {
+		log.Printf("[yt-dlp %s] cookies.txt не знайдено — завантаження без кукісів", mediaID)
+	}
+
+	log.Printf("[yt-dlp %s] старт завантаження: %s", mediaID, cleanURL)
 
 	res, err := dl.Run(ctx, cleanURL)
 	if err != nil {
 		_ = os.Remove(tmpActualPath)
+		if res != nil {
+			log.Printf("[yt-dlp %s] ПОМИЛКА: %v\n--- stderr ---\n%s", mediaID, err, res.Stderr)
+		} else {
+			log.Printf("[yt-dlp %s] ПОМИЛКА: %v", mediaID, err)
+		}
 		return "", "", fmt.Errorf("помилка завантаження yt-dlp: %w", err)
 	}
 
-	fmt.Println(res.OutputLogs)
-
 	if err := os.Rename(tmpActualPath, outPath); err != nil {
 		_ = os.Remove(tmpActualPath)
+		log.Printf("[yt-dlp %s] помилка збереження: %v", mediaID, err)
 		return "", "", fmt.Errorf("помилка збереження відео: %w", err)
 	}
 
+	log.Printf("[yt-dlp %s] готово → %s", mediaID, outPath)
 	return outPath, mediaID, nil
 }

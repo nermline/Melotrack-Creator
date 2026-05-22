@@ -6,7 +6,8 @@
       "Bash(go vet *)",
       "Bash(npx eslint *)",
       "Bash(npm install *)",
-      "Bash(cd /mnt/c/Users/kolat/Melotrack-Creator/frontend && npm run build 2>&1 | tail -30)"
+      "Bash(cd /mnt/c/Users/kolat/Melotrack-Creator/frontend && npm run build 2>&1 | tail -30)",
+      "PowerShell(cd C:\\\\Users\\\\kolat\\\\Melotrack-Creator; $out = go test ./... -count=1 -v 2>&1; $pass = \\($out | Select-String \"^--- PASS\"\\).Count; $fail = \\($out | Select-String \"^--- FAIL\"\\).Count; Write-Output \"PASS=$pass FAIL=$fail\"; $out | Select-String \"^\\(ok|FAIL\\)\\\\s\")"
     ]
   }
 }
