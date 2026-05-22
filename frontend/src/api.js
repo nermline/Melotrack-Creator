@@ -26,9 +26,9 @@ api.interceptors.response.use(
 
         if (error.response && error.response.status === 401 && !originalRequest._retry) {
             
-            // ЗАХИСТ ВІД ЦИКЛУ: Якщо сам запит /refresh повернув 401/400, 
+            // ЗАХИСТ ВІД ЦИКЛУ: Якщо сам запит /api/refresh повернув 401/400,
             // не намагаємося рефрешити його знову. Просто викидаємо на логін.
-            if (originalRequest.url === '/refresh') {
+            if (originalRequest.url === '/api/refresh') {
                 localStorage.removeItem('token');
                 window.location.href = '/login';
                 return Promise.reject(error);
@@ -36,7 +36,7 @@ api.interceptors.response.use(
 
             originalRequest._retry = true;
             try {
-                const response = await axios.get('/refresh', {
+                const response = await axios.get('/api/refresh', {
                     headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
                 });
                 

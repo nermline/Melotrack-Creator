@@ -15,7 +15,7 @@ export default function Login() {
         e.preventDefault();
         setError(''); setBusy(true);
         try {
-            const response = await api.post('/login', { username, password });
+            const response = await api.post('/api/login', { username, password });
             const actualToken = response.data.access_token;
             if (actualToken && typeof actualToken === 'string') {
                 localStorage.setItem('token', actualToken);

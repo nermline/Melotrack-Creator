@@ -26,8 +26,11 @@ func Setup(r *gin.Engine, db *gorm.DB, authMiddleware *jwt.GinJWTMiddleware) {
 
 	hub := ws.NewHub()
 
-	r.POST("/login", authMiddleware.LoginHandler)
-	r.GET("/refresh", authMiddleware.RefreshHandler)
+	// Авторизація під /api/, щоб не конфліктувати з клієнтським маршрутом /login
+	// (сторінка входу SPA). Інакше браузерний перехід на /login потрапляв би на
+	// бекенд і отримував 404 замість сторінки входу.
+	r.POST("/api/login", authMiddleware.LoginHandler)
+	r.GET("/api/refresh", authMiddleware.RefreshHandler)
 
 	api := r.Group("/api")
 	protectedMedia := r.Group("/")
@@ -82,7 +85,8 @@ func serveSPA(r *gin.Engine, distDir string) {
 	}
 
 	// Префікси, які обслуговує бекенд і які не можна підміняти на index.html.
-	apiPrefixes := []string{"/api", "/login", "/refresh", "/media", "/raw", "/answers"}
+	// /login НЕ входить сюди — це клієнтський маршрут (сторінка входу SPA).
+	apiPrefixes := []string{"/api", "/media", "/raw", "/answers"}
 
 	r.NoRoute(func(c *gin.Context) {
 		p := c.Request.URL.Path

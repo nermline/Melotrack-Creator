@@ -12,13 +12,12 @@ export default defineConfig({
   server: {
     host: true, // доступ із LAN: http://IP-машини:5173
     proxy: {
+      // /login та /refresh тепер під /api (бекенд), тож окремих записів не треба —
+      // /login лишається клієнтським маршрутом SPA, який роздає сам Vite.
       '/api':     { target: backend, changeOrigin: true, ws: true },
-      '/login':   { target: backend, changeOrigin: true },
-      '/refresh': { target: backend, changeOrigin: true },
       '/media':   { target: backend, changeOrigin: true },
       '/raw':     { target: backend, changeOrigin: true },
       '/answers': { target: backend, changeOrigin: true },
-      '/play':    { target: backend, changeOrigin: true },
     },
   },
 })
