@@ -96,7 +96,7 @@ export function useGameWS(pid, role) {
                         offsetRef.current = (msg.state.server_now || Date.now()) - Date.now();
                         setState(msg.state);
                     }
-                } catch {}
+                } catch { /* ignore malformed frame */ }
             };
         }
 

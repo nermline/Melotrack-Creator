@@ -1,30 +1,37 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { useGameWS, useProject } from '../game/useGame';
 import GameScreen from '../game/GameScreen';
 import GameRemote from '../game/GameRemote';
+import { Button } from '../ui/kit';
 
-// Комбо-режим для редактора/адміна: екран (превʼю) і пульт на одній сторінці,
-// щоб бачити, як виглядатиме показ. Одне зʼєднання роль remote керує і відображає.
+// Комбо-режим для редактора/адміна: екран (превʼю) і пульт на одній сторінці.
+// Одне зʼєднання роль remote — і керує, і відображає.
 export default function PresentView() {
     const { pid } = useParams();
-    const { cats } = useProject(pid);
+    const navigate = useNavigate();
+    const { project, cats } = useProject(pid);
     const { state, offsetRef, send } = useGameWS(pid, 'remote');
 
     return (
-        <div style={{ padding: 16, background: '#15151b', minHeight: '100vh', color: '#eee' }}>
-            <p style={{ margin: '0 0 8px' }}>
-                <Link to={`/projects/${pid}`} style={{ color: '#8af' }}>← Проєкт</Link>
-            </p>
-            <h1 style={{ fontSize: 18, marginTop: 0 }}>Превʼю показу (екран + пульт)</h1>
-
-            <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-                <div style={{ width: 640, maxWidth: '100%', aspectRatio: '16 / 9', border: '1px solid #333' }}>
-                    <GameScreen pid={pid} cats={cats} state={state} offsetRef={offsetRef} />
+        <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.22 }} className="mx-auto px-4 py-5" style={{ maxWidth: 1400 }}>
+            <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
+                <div>
+                    <h1 className="m-0 text-2xl font-bold" style={{ color: '#fff' }}>Превʼю показу</h1>
+                    <p className="m-0 mt-1 text-sm" style={{ color: 'var(--color-muted)' }}>екран + пульт на одному пристрої</p>
                 </div>
-                <div style={{ flex: '1 1 320px', minWidth: 300 }}>
-                    <GameRemote state={state} offsetRef={offsetRef} send={send} />
-                </div>
+                <Button variant="ghost" onClick={() => navigate(`/projects/${pid}`)}>← Проєкт</Button>
             </div>
-        </div>
+
+            <div className="grid gap-5 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px]">
+                <div className="glass" style={{ padding: 8, alignSelf: 'start' }}>
+                    <div style={{ width: '100%', aspectRatio: '16 / 9', borderRadius: 12, overflow: 'hidden', background: '#000' }}>
+                        <GameScreen pid={pid} project={project} cats={cats} state={state} offsetRef={offsetRef} />
+                    </div>
+                </div>
+                <GameRemote cats={cats} state={state} offsetRef={offsetRef} send={send} />
+            </div>
+        </motion.div>
     );
 }

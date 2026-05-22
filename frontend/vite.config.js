@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 
 // Бекенд (Go) у dev слухає :8080. Vite проксує туди API/медіа/WebSocket, тож
 // фронтенд звертається відносними шляхами й працює як локально, так і з інших
@@ -7,7 +8,7 @@ import react from '@vitejs/plugin-react'
 const backend = 'http://localhost:8080'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   server: {
     host: true, // доступ із LAN: http://IP-машини:5173
     proxy: {

@@ -4,7 +4,9 @@
       "Bash(go build *)",
       "Bash(npm run *)",
       "Bash(go vet *)",
-      "Bash(npx eslint *)"
+      "Bash(npx eslint *)",
+      "Bash(npm install *)",
+      "Bash(cd /mnt/c/Users/kolat/Melotrack-Creator/frontend && npm run build 2>&1 | tail -30)"
     ]
   }
 }

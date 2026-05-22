@@ -9,7 +9,7 @@ import (
 
 // Тривалості фаз з фіксованим таймером (мс).
 const (
-	titleDurationMs     int64 = 1000
+	titleDurationMs     int64 = 2800
 	countdownDurationMs int64 = 3000
 	thinkingDurationMs  int64 = 10000
 	defaultClipMs       int64 = 5000 // запасна довжина, якщо тривалість кліпу невідома

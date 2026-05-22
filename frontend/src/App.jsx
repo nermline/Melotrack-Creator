@@ -1,4 +1,5 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { AnimatePresence } from 'framer-motion';
 import Login from './pages/Login';
 import Projects from './pages/Projects';
 import ProjectDetail from './pages/ProjectDetail';
@@ -14,10 +15,11 @@ function ProtectedRoute({ children }) {
     return children;
 }
 
-export default function App() {
+function AnimatedRoutes() {
+    const location = useLocation();
     return (
-        <Router>
-            <Routes>
+        <AnimatePresence mode="wait">
+            <Routes location={location} key={location.pathname}>
                 <Route path="/login" element={<Login />} />
                 <Route path="/" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
                 <Route path="/projects/:pid" element={<ProtectedRoute><ProjectDetail /></ProtectedRoute>} />
@@ -28,6 +30,14 @@ export default function App() {
                 <Route path="/projects/:pid/present" element={<ProtectedRoute><PresentView /></ProtectedRoute>} />
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+        </AnimatePresence>
+    );
+}
+
+export default function App() {
+    return (
+        <Router>
+            <AnimatedRoutes />
         </Router>
     );
 }

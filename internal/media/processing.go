@@ -81,7 +81,12 @@ func RunFFmpegCropAndTrim(ctx context.Context, rawPath, outPath string, v models
 	args = append(args, "-i", rawPath)
 
 	// 3. Завжди реенкодимо libx264 — новий ключовий кадр ТОЧНО на StartTime
-	if v.CropWidth > 0 && v.CropHeight > 0 {
+	if v.Fit {
+		// "Вмістити": вписуємо все відео в кадр 1280×720 (16:9) з чорними полями,
+		// без втрати інформації. Має пріоритет над crop.
+		args = append(args, "-vf",
+			"scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1")
+	} else if v.CropWidth > 0 && v.CropHeight > 0 {
 		vfArg := fmt.Sprintf("crop=%d:%d:%d:%d", v.CropWidth, v.CropHeight, v.CropX, v.CropY)
 		args = append(args, "-vf", vfArg)
 	}

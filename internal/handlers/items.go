@@ -30,6 +30,7 @@ type VideoInput struct {
 	CropY      int     `json:"crop_y"`
 	CropWidth  int     `json:"crop_width"`
 	CropHeight int     `json:"crop_height"`
+	Fit        bool    `json:"fit"`
 }
 
 type UpdateVideoInput struct {
@@ -41,6 +42,7 @@ type UpdateVideoInput struct {
 	CropY      *int     `json:"crop_y"`
 	CropWidth  *int     `json:"crop_width"`
 	CropHeight *int     `json:"crop_height"`
+	Fit        *bool    `json:"fit"`
 }
 
 type AnswerInput struct {
@@ -173,6 +175,7 @@ func CreateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 					CropY:        input.Video.CropY,
 					CropWidth:    input.Video.CropWidth,
 					CropHeight:   input.Video.CropHeight,
+					Fit:          input.Video.Fit,
 					RenderStatus: "unrendered",
 				},
 				Answer: models.Answer{
@@ -231,6 +234,11 @@ func validateVideoCropParams(v models.Video, m models.Media) error {
 	}
 	if v.EndTime > 0 && v.EndTime > m.Duration {
 		return fmt.Errorf("end_time (%.2fs) виходить за межі тривалості відео (%.2fs)", v.EndTime, m.Duration)
+	}
+
+	// У режимі "вмістити" crop ігнорується — пропускаємо перевірку рамки.
+	if v.Fit {
+		return nil
 	}
 
 	// Crop-прямокутник (перевіряємо лише якщо задано)
@@ -341,6 +349,10 @@ func UpdateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 				if input.Video.CropHeight != nil && updatedItem.Video.CropHeight != *input.Video.CropHeight {
 					paramsChanged = true
 					updatedItem.Video.CropHeight = *input.Video.CropHeight
+				}
+				if input.Video.Fit != nil && updatedItem.Video.Fit != *input.Video.Fit {
+					paramsChanged = true
+					updatedItem.Video.Fit = *input.Video.Fit
 				}
 			}
 

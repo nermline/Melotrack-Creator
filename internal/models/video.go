@@ -11,6 +11,9 @@ type Video struct {
 	CropY         int     `json:"crop_y"`
 	CropWidth     int     `json:"crop_width"`
 	CropHeight    int     `json:"crop_height"`
+	// Fit=true → відео вписується у кадр 16:9 (letterbox), без втрати інформації.
+	// Має пріоритет над crop.
+	Fit           bool    `gorm:"not null;default:false" json:"fit"`
 	RenderStatus  string  `gorm:"default:'unrendered'" json:"render_status"`
 	ReadyFilePath string  `json:"-"` // Залишаємо прихованим (або видаляємо)
 }
