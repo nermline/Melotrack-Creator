@@ -10,9 +10,6 @@ import (
 	"github.com/lrstanley/go-ytdlp"
 )
 
-// cookiesFile — файл з кукісами YouTube у кореневій папці проєкту (опційно).
-// Якщо існує, передається yt-dlp через --cookies для доступу до відео, що
-// потребують авторизації / обходу обмежень.
 const cookiesFile = "cookies.txt"
 
 func ExtractYouTubeID(videoURL string) string {
@@ -33,9 +30,6 @@ func DownloadRawVideo(ctx context.Context, youtubeURL string) (string, string, e
 
 	mediaID := ExtractYouTubeID(youtubeURL)
 
-	// Очищаємо URL від &list=... та інших параметрів, які змушують yt-dlp
-	// завантажувати весь плейлист замість конкретного відео.
-	// Без цього rename може впасти → статус Media ніколи не стане "ready".
 	cleanURL := fmt.Sprintf("https://www.youtube.com/watch?v=%s", mediaID)
 
 	outPath := fmt.Sprintf("./downloads/raw/%s.mp4", mediaID)
@@ -51,13 +45,11 @@ func DownloadRawVideo(ctx context.Context, youtubeURL string) (string, string, e
 		Format(formatFilter).
 		MergeOutputFormat("mp4").
 		Verbose().
-		// Логуємо кожен рядок виводу yt-dlp у консоль сервера в реальному часі.
 		StderrFunc(func(line string) {
 			log.Printf("[yt-dlp %s] %s", mediaID, line)
 		}).
 		Output(tmpBase)
 
-	// Якщо у корені проєкту лежить cookies.txt — передаємо його yt-dlp.
 	if _, err := os.Stat(cookiesFile); err == nil {
 		log.Printf("[yt-dlp %s] використовую cookies: %s", mediaID, cookiesFile)
 		dl = dl.Cookies(cookiesFile)

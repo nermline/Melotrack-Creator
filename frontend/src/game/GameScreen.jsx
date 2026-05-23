@@ -3,9 +3,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { remainingMs, mediaUrl, answerImg } from './useGame';
 import { useTicker } from './sound';
 
-// Розміри масштабуються через container query units (cqmin/cqh) відносно
-// контейнера показу — тому однаково гарно і на весь екран, і в маленькому
-// превʼю-боксі редактора. Для цього на обгортці увімкнено container-type: size.
 const S = {
     wrap: {
         position: 'relative', width: '100%', height: '100%', background: '#05060a',
@@ -33,7 +30,6 @@ const S = {
     },
 };
 
-// ─── Декоративне тло (мʼякі рухомі плями) ──────────────────────────────────
 function BgGlow() {
     return (
         <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
@@ -53,7 +49,6 @@ function BgGlow() {
     );
 }
 
-// ─── Аудіо-візуалізатор (стовпчики еквалайзера) ─────────────────────────────
 function Equalizer({ playing }) {
     const bars = [0, 1, 2, 3, 4, 5, 6, 7];
     return (
@@ -72,9 +67,6 @@ function Equalizer({ playing }) {
     );
 }
 
-// ─── Кільце таймера + число (для відліку та роздумів) ───────────────────────
-// Світіння робимо радіальним градієнтом ПОЗАДУ кільця (а не SVG-фільтром
-// drop-shadow, який обрізається прямокутною областю фільтра у квадрат).
 function TimerView({ sec, frac, color, glow, label }) {
     const R = 44, C = 2 * Math.PI * R;
     return (
@@ -105,7 +97,6 @@ function TimerView({ sec, frac, color, glow, label }) {
     );
 }
 
-// Плейсхолдер для відповіді без завантаженого фото.
 function PhotoPlaceholder() {
     return (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
@@ -137,13 +128,11 @@ export default function GameScreen({ pid, project, cats, state, offsetRef }) {
     const prevSecRef = useRef(-1);
     const { unlock, tick } = useTicker();
 
-    // Тік ~10/с для оновлення таймерів і синхронізації відео.
     useEffect(() => {
         const id = setInterval(() => force((n) => (n + 1) % 1000000), 100);
         return () => clearInterval(id);
     }, []);
 
-    // Синхронізація відео з серверним таймлайном (перемотка/пауза/доєднання).
     useEffect(() => {
         const v = videoRef.current;
         if (!v || !state) return;
@@ -151,7 +140,7 @@ export default function GameScreen({ pid, project, cats, state, offsetRef }) {
         const dur = state.phase_duration_ms || 0;
         const target = (dur - remainingMs(state, offsetRef.current)) / 1000;
         if (isFinite(target) && Math.abs(v.currentTime - target) > 0.75) {
-            try { v.currentTime = target; } catch { /* ignore */ }
+            try { v.currentTime = target; } catch {}
         }
         if (state.paused) v.pause();
         else if (unlocked) v.play().catch(() => {});
@@ -163,7 +152,6 @@ export default function GameScreen({ pid, project, cats, state, offsetRef }) {
     const sec = Math.max(0, Math.ceil(rem / 1000));
     const frac = dur > 0 ? Math.max(0, Math.min(1, rem / dur)) : 0;
 
-    // Звук тікання при зміні секунди (відлік і роздуми). Останні 3с — вищий тон.
     useEffect(() => {
         const ticking = phase === 'countdown' || phase === 'thinking';
         if (!unlocked || !ticking) { prevSecRef.current = -1; return; }
@@ -281,9 +269,6 @@ export default function GameScreen({ pid, project, cats, state, offsetRef }) {
             case 'answers': {
                 const items = cat?.items || [];
                 const n = items.length;
-                // Колонки за кількістю; розмір картки обмежений І по ширині (колонки),
-                // І по висоті (рядки) — тому 1 елемент не розтягується на весь екран,
-                // а багато елементів вміщаються разом із заголовком.
                 const cols = n <= 1 ? 1 : n <= 4 ? n : n <= 6 ? 3 : 4;
                 const rows = Math.max(1, Math.ceil(n / cols));
                 const cell = `min(${(86 / cols).toFixed(1)}cqw, ${(62 / rows).toFixed(1)}cqh)`;

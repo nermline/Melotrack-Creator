@@ -11,7 +11,6 @@ function fmt(ms) {
 export default function GameRemote({ state, offsetRef, send, cats = [] }) {
     const [, force] = useState(0);
 
-    // Тік для прогрес-бару поточної фази.
     useEffect(() => {
         const id = setInterval(() => force((n) => (n + 1) % 1000000), 100);
         return () => clearInterval(id);
@@ -23,7 +22,6 @@ export default function GameRemote({ state, offsetRef, send, cats = [] }) {
     const pct = hasTimer ? Math.max(0, Math.min(100, 100 * (1 - rem / state.phase_duration_ms))) : 0;
     const paused = !!state?.paused;
 
-    // Заголовки беремо з завантаженого проєкту (cats) за індексами стану.
     const inGame = state && phase !== 'welcome' && phase !== 'finished';
     const cat = inGame ? cats[state.category_index] : null;
     const item = cat?.items?.[state.item_index];
@@ -35,7 +33,6 @@ export default function GameRemote({ state, offsetRef, send, cats = [] }) {
     if (inGame && state.total_items) meta.push(`Питання ${state.item_index + 1}/${state.total_items}`);
     if (phase === 'playing') { meta.push(state.show_video ? '📺 відео' : '🎵 аудіо'); if (!state.has_clip) meta.push('⚠️ нема кліпу'); }
 
-    // Контекстна головна дія.
     const primary = (() => {
         if (!state || phase === 'welcome') return { label: '▶ Почати показ', on: () => send('start') };
         if (phase === 'finished') return { label: '↻ Почати спочатку', on: () => send('start') };
@@ -48,7 +45,6 @@ export default function GameRemote({ state, offsetRef, send, cats = [] }) {
 
     return (
         <div className="grid gap-4" style={{ maxWidth: 540 }}>
-            {/* Статус */}
             <div className="glass p-4">
                 <div className="flex items-center justify-between gap-2">
                     <span style={{ fontSize: 22, fontWeight: 800, color: '#fff' }}>
@@ -79,13 +75,11 @@ export default function GameRemote({ state, offsetRef, send, cats = [] }) {
                 </div>
             </div>
 
-            {/* Головна дія */}
             <button onClick={primary.on} className="btn btn-primary"
                 style={{ fontSize: 18, padding: '18px 16px', borderRadius: 14 }}>
                 {primary.label}
             </button>
 
-            {/* Керування */}
             <div className="grid gap-2" style={{ gridTemplateColumns: '1fr 1fr' }}>
                 <Button onClick={() => send('back')} disabled={!state || phase === 'welcome'} style={ctrlStyle}>⏮ Назад</Button>
                 <Button onClick={() => send(paused ? 'resume' : 'pause')} disabled={!hasTimer} style={ctrlStyle}>

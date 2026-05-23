@@ -7,17 +7,13 @@ import (
 	"gorm.io/gorm"
 )
 
-// Тривалості фаз з фіксованим таймером (мс).
 const (
 	titleDurationMs     int64 = 2800
 	countdownDurationMs int64 = 3000
 	thinkingDurationMs  int64 = 10000
-	defaultClipMs       int64 = 5000 // запасна довжина, якщо тривалість кліпу невідома
+	defaultClipMs       int64 = 5000
 )
 
-// gameItem / gameCategory — знімок проєкту в пам'яті сесії.
-// Дані для рендеру (назви, відповіді, фото) клієнти беруть з REST /api/projects/:pid.
-// Сесія тримає лише те, що потрібно рушію: порядок, тривалості та прапорці.
 type gameItem struct {
 	ID         uint
 	ShowVideo  bool
@@ -31,7 +27,6 @@ type gameCategory struct {
 	Items []gameItem
 }
 
-// loadSnapshot читає впорядкований знімок проєкту з БД.
 func loadSnapshot(db *gorm.DB, projectID string) []gameCategory {
 	var cats []models.Category
 	db.
@@ -57,7 +52,6 @@ func loadSnapshot(db *gorm.DB, projectID string) []gameCategory {
 	return out
 }
 
-// clipDurationMs обчислює тривалість кліпу з налаштувань відео.
 func clipDurationMs(v models.Video) int64 {
 	if v.EndTime > 0 && v.EndTime > v.StartTime {
 		return int64((v.EndTime - v.StartTime) * 1000)
@@ -71,8 +65,6 @@ func clipDurationMs(v models.Video) int64 {
 	return 0
 }
 
-// --- Переходи між фазами (усі *Locked припускають, що s.mu вже взято) ---
-
 func (s *GameSession) curCat() *gameCategory {
 	if s.State.CategoryIndex < 0 || s.State.CategoryIndex >= len(s.Categories) {
 		return nil
@@ -80,7 +72,6 @@ func (s *GameSession) curCat() *gameCategory {
 	return &s.Categories[s.State.CategoryIndex]
 }
 
-// reloadLocked перечитує знімок з БД (свіжі дані для нового показу/тесту).
 func (s *GameSession) reloadLocked() {
 	s.Categories = loadSnapshot(s.db, s.ProjectID)
 	s.State.TotalCategories = len(s.Categories)
@@ -159,7 +150,6 @@ func (s *GameSession) enterFinishedLocked() {
 	s.clearTimerLocked()
 }
 
-// resolveItemLocked заповнює ItemID/ShowVideo/HasClip для поточного індексу.
 func (s *GameSession) resolveItemLocked() {
 	cat := s.curCat()
 	if cat == nil {
@@ -176,8 +166,6 @@ func (s *GameSession) resolveItemLocked() {
 	s.State.HasClip = it.HasClip
 }
 
-// advanceLocked переходить до наступної фази за поточним станом.
-// Викликається таймером (автоперехід) та командами next/advance (ручний перехід).
 func (s *GameSession) advanceLocked() {
 	switch s.State.Phase {
 	case PhaseWelcome:
@@ -193,8 +181,7 @@ func (s *GameSession) advanceLocked() {
 	case PhasePlaying:
 		s.enterThinkingLocked()
 	case PhaseThinking:
-		// Відлік (3с) лише на початку категорії, тому між питаннями переходимо
-		// одразу до відтворення наступного питання, без повторного відліку.
+
 		cat := s.curCat()
 		if cat != nil && s.State.ItemIndex < len(cat.Items)-1 {
 			s.State.ItemIndex++
@@ -212,11 +199,10 @@ func (s *GameSession) advanceLocked() {
 			s.enterFinishedLocked()
 		}
 	case PhaseFinished:
-		// нічого
+
 	}
 }
 
-// backLocked повертає показ до попереднього питання поточної категорії.
 func (s *GameSession) backLocked() {
 	switch s.State.Phase {
 	case PhaseCountdown:
@@ -229,7 +215,7 @@ func (s *GameSession) backLocked() {
 			s.enterCountdownLocked(0)
 		}
 	case PhaseAwaitAnswers, PhaseAnswers:
-		// повернутися до останнього питання категорії
+
 		if cat := s.curCat(); cat != nil && len(cat.Items) > 0 {
 			s.State.ItemIndex = len(cat.Items) - 1
 			s.enterPlayingLocked()
@@ -239,10 +225,9 @@ func (s *GameSession) backLocked() {
 	}
 }
 
-// seekLocked зміщує поточний таймер на deltaMs (для відео — перемотка).
 func (s *GameSession) seekLocked(deltaMs int64) {
 	if s.State.PhaseDuration <= 0 {
-		return // фаза без таймера
+		return
 	}
 	var elapsed int64
 	if s.State.Paused {
@@ -296,11 +281,8 @@ func (s *GameSession) resumeLocked() {
 	s.startTimerLocked(s.State.RemainingMs, s.State.PhaseDuration)
 }
 
-// --- Таймер ---
-
 func nowMs() int64 { return time.Now().UnixMilli() }
 
-// startTimerLocked запускає таймер фази на remainingMs (повна тривалість — totalMs).
 func (s *GameSession) startTimerLocked(remainingMs, totalMs int64) {
 	s.stopTimerLocked()
 	s.timerGen++
@@ -321,7 +303,7 @@ func (s *GameSession) startTimerLocked(remainingMs, totalMs int64) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		if gen != s.timerGen {
-			return // застарілий таймер
+			return
 		}
 		s.advanceLocked()
 		s.broadcastLocked()
@@ -333,7 +315,7 @@ func (s *GameSession) stopTimerLocked() {
 		s.timer.Stop()
 		s.timer = nil
 	}
-	s.timerGen++ // інвалідовуємо вже запланований колбек
+	s.timerGen++
 }
 
 func (s *GameSession) clearTimerLocked() {

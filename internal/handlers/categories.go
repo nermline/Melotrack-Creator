@@ -231,7 +231,7 @@ func DeleteCategory(db *gorm.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{"message": "category and all its media deleted successfully"})
 	}
 }
-// projectExists перевіряє, що проєкт існує (без перевірки власника — проєкти спільні).
+
 func projectExists(c *gin.Context, db *gorm.DB, projectID string) bool {
 	var count int64
 	if err := db.Model(&models.Project{}).Where("id = ?", projectID).Count(&count).Error; err != nil {

@@ -52,28 +52,28 @@ func TestAdvanceFullFlow(t *testing.T) {
 	defer s.stopTimerLocked()
 
 	steps := []struct {
-		wantPhase     string
-		wantCatIdx    int
-		wantItemIdx   int
-		checkItemID   bool
-		wantItemID    uint
+		wantPhase   string
+		wantCatIdx  int
+		wantItemIdx int
+		checkItemID bool
+		wantItemID  uint
 	}{
-		{PhaseCategoryTitle, 0, 0, false, 0},   // welcome -> start -> category_title
-		{PhaseCountdown, 0, 0, false, 0},       // -> countdown (cat has items)
-		{PhasePlaying, 0, 0, true, 10},         // -> playing item0
-		{PhaseThinking, 0, 0, false, 0},        // -> thinking
-		{PhasePlaying, 0, 1, true, 11},         // -> playing item1 (no extra countdown)
-		{PhaseThinking, 0, 1, false, 0},        // -> thinking
-		{PhaseAwaitAnswers, 0, 1, false, 0},    // last item -> await_answers
-		{PhaseAnswers, 0, 1, false, 0},         // -> answers
-		{PhaseCategoryTitle, 1, 0, false, 0},   // -> next category title
-		{PhaseCountdown, 1, 0, false, 0},       // -> countdown
-		{PhasePlaying, 1, 0, true, 20},         // -> playing
-		{PhaseThinking, 1, 0, false, 0},        // -> thinking
-		{PhaseAwaitAnswers, 1, 0, false, 0},    // last item -> await_answers
-		{PhaseAnswers, 1, 0, false, 0},         // -> answers
-		{PhaseFinished, 1, 0, false, 0},        // last category -> finished
-		{PhaseFinished, 1, 0, false, 0},        // finished stays finished
+		{PhaseCategoryTitle, 0, 0, false, 0},
+		{PhaseCountdown, 0, 0, false, 0},
+		{PhasePlaying, 0, 0, true, 10},
+		{PhaseThinking, 0, 0, false, 0},
+		{PhasePlaying, 0, 1, true, 11},
+		{PhaseThinking, 0, 1, false, 0},
+		{PhaseAwaitAnswers, 0, 1, false, 0},
+		{PhaseAnswers, 0, 1, false, 0},
+		{PhaseCategoryTitle, 1, 0, false, 0},
+		{PhaseCountdown, 1, 0, false, 0},
+		{PhasePlaying, 1, 0, true, 20},
+		{PhaseThinking, 1, 0, false, 0},
+		{PhaseAwaitAnswers, 1, 0, false, 0},
+		{PhaseAnswers, 1, 0, false, 0},
+		{PhaseFinished, 1, 0, false, 0},
+		{PhaseFinished, 1, 0, false, 0},
 	}
 
 	for i, st := range steps {
@@ -96,14 +96,14 @@ func TestAdvanceFullFlow(t *testing.T) {
 func TestAdvancePlayingResolvesFlags(t *testing.T) {
 	s := newTestSession()
 	defer s.stopTimerLocked()
-	s.advanceLocked() // category_title
-	s.advanceLocked() // countdown
-	s.advanceLocked() // playing item0
+	s.advanceLocked()
+	s.advanceLocked()
+	s.advanceLocked()
 	if !s.State.ShowVideo || !s.State.HasClip {
 		t.Errorf("item0 should have ShowVideo+HasClip, got show=%v clip=%v", s.State.ShowVideo, s.State.HasClip)
 	}
-	s.advanceLocked() // thinking
-	s.advanceLocked() // playing item1
+	s.advanceLocked()
+	s.advanceLocked()
 	if s.State.ShowVideo || s.State.HasClip {
 		t.Errorf("item1 should have no video/clip, got show=%v clip=%v", s.State.ShowVideo, s.State.HasClip)
 	}
@@ -112,22 +112,22 @@ func TestAdvancePlayingResolvesFlags(t *testing.T) {
 func TestBackTransitions(t *testing.T) {
 	s := newTestSession()
 	defer s.stopTimerLocked()
-	// Дійти до playing item1.
+
 	for i := 0; i < 5; i++ {
 		s.advanceLocked()
 	}
 	if s.State.Phase != PhasePlaying || s.State.ItemIndex != 1 {
 		t.Fatalf("setup: phase=%s idx=%d", s.State.Phase, s.State.ItemIndex)
 	}
-	s.backLocked() // playing item1 -> playing item0
+	s.backLocked()
 	if s.State.Phase != PhasePlaying || s.State.ItemIndex != 0 {
 		t.Errorf("back from item1: phase=%s idx=%d", s.State.Phase, s.State.ItemIndex)
 	}
-	s.backLocked() // playing item0 -> countdown
+	s.backLocked()
 	if s.State.Phase != PhaseCountdown {
 		t.Errorf("back from item0: phase=%s, want countdown", s.State.Phase)
 	}
-	s.backLocked() // countdown -> category_title
+	s.backLocked()
 	if s.State.Phase != PhaseCategoryTitle {
 		t.Errorf("back from countdown: phase=%s, want category_title", s.State.Phase)
 	}
@@ -136,17 +136,17 @@ func TestBackTransitions(t *testing.T) {
 func TestSeekClamping(t *testing.T) {
 	s := newTestSession()
 	defer s.stopTimerLocked()
-	s.advanceLocked() // category_title
-	s.advanceLocked() // countdown
+	s.advanceLocked()
+	s.advanceLocked()
 	if s.State.PhaseDuration != countdownDurationMs {
 		t.Fatalf("expected countdown duration, got %d", s.State.PhaseDuration)
 	}
-	// Великий зсув назад — фаза не міняється.
+
 	s.seekLocked(-100000)
 	if s.State.Phase != PhaseCountdown {
 		t.Errorf("seek backward changed phase to %s", s.State.Phase)
 	}
-	// Зсув за кінець — переходимо до playing.
+
 	s.seekLocked(100000)
 	if s.State.Phase != PhasePlaying {
 		t.Errorf("seek past end should advance to playing, got %s", s.State.Phase)
@@ -156,7 +156,7 @@ func TestSeekClamping(t *testing.T) {
 func TestSeekNoTimerPhase(t *testing.T) {
 	s := newTestSession()
 	defer s.stopTimerLocked()
-	// await_answers не має таймера — seek нічого не робить.
+
 	s.State.Phase = PhaseAwaitAnswers
 	s.clearTimerLocked()
 	s.seekLocked(5000)
@@ -168,8 +168,8 @@ func TestSeekNoTimerPhase(t *testing.T) {
 func TestPauseResume(t *testing.T) {
 	s := newTestSession()
 	defer s.stopTimerLocked()
-	s.advanceLocked() // category_title
-	s.advanceLocked() // countdown
+	s.advanceLocked()
+	s.advanceLocked()
 	s.pauseLocked()
 	if !s.State.Paused {
 		t.Error("expected paused")
@@ -240,11 +240,11 @@ func TestCategoryWithNoItemsGoesToAwait(t *testing.T) {
 	s.State.TotalCategories = 1
 	defer s.stopTimerLocked()
 
-	s.advanceLocked() // welcome -> category_title
+	s.advanceLocked()
 	if s.State.Phase != PhaseCategoryTitle {
 		t.Fatalf("phase = %s", s.State.Phase)
 	}
-	s.advanceLocked() // category_title (no items) -> await_answers
+	s.advanceLocked()
 	if s.State.Phase != PhaseAwaitAnswers {
 		t.Errorf("empty category should jump to await_answers, got %s", s.State.Phase)
 	}

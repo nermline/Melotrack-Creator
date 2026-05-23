@@ -37,7 +37,6 @@ func TestCreateProject_DuplicateTitle(t *testing.T) {
 func TestGetProjects_OrderedAndEmptyArray(t *testing.T) {
 	r := newTestRouter(newTestDB(t))
 
-	// Порожній список — має бути [] а не null.
 	w := doJSON(r, "GET", "/api/projects", nil)
 	mustStatus(t, w, http.StatusOK)
 	if w.Body.String() != "[]" {

@@ -64,7 +64,7 @@ func (c *EditorClient) readPump() {
 
 		var msg EditorMessage
 		if err := json.Unmarshal(message, &msg); err == nil {
-			// Пересилаємо чорнові зміни всім іншим у кімнаті
+
 			if msg.Action == "sync_edit" {
 				c.Room.BroadcastEdit(c, msg)
 			}

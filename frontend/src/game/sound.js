@@ -1,12 +1,8 @@
 import { useCallback, useRef } from 'react';
 
-// Синтез коротких «тіків» через Web Audio API — без зовнішніх аудіофайлів.
-// AudioContext створюється лише після жесту користувача (клік «увімкнути показ»),
-// інакше браузер блокує звук автоплеєм.
 export function useTicker() {
     const ctxRef = useRef(null);
 
-    // Створити/розбудити аудіоконтекст (викликати з обробника кліку).
     const unlock = useCallback(() => {
         if (!ctxRef.current) {
             const AC = window.AudioContext || window.webkitAudioContext;
@@ -17,7 +13,6 @@ export function useTicker() {
         return ctx;
     }, []);
 
-    // Короткий клік: коротка обвідна гучності на осциляторі.
     const tick = useCallback(({ freq = 800, dur = 0.05, gain = 0.22, type = 'square' } = {}) => {
         const ctx = ctxRef.current;
         if (!ctx || ctx.state !== 'running') return;

@@ -1,13 +1,12 @@
 @import "tailwindcss";
 
-/* ─── Дизайн-токени: темне "glass" з мʼяким акцентом ───────────────────────── */
 @theme {
   --color-bg:       #0b0d13;
   --color-surface:  #11141d;
   --color-text:     #e6e8ee;
   --color-muted:    #98a2b3;
-  --color-accent:   #7c83ff;  /* індиго-фіолет */
-  --color-accent2:  #22d3ee;  /* бірюза */
+  --color-accent:   #7c83ff;
+  --color-accent2:  #22d3ee;
   --color-danger:   #f4607a;
   --color-warn:     #f0b03a;
   --color-ok:       #44d07b;
@@ -32,7 +31,6 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ─── Скляні поверхні ───────────────────────────────────────────────────────── */
 .glass {
   background: rgba(255, 255, 255, 0.045);
   border: 1px solid rgba(255, 255, 255, 0.10);
@@ -47,7 +45,6 @@ body {
   border-radius: 12px;
 }
 
-/* ─── Поля вводу ────────────────────────────────────────────────────────────── */
 .input {
   width: 100%;
   box-sizing: border-box;
@@ -67,13 +64,11 @@ body {
 }
 .input::placeholder { color: #6b7280; }
 
-/* Підсвітка зміненого (незбереженого) значення — як "track changes" */
 .changed {
   border-color: var(--color-warn) !important;
   box-shadow: 0 0 0 3px rgba(240, 176, 58, 0.18) !important;
 }
 
-/* ─── Кнопки ────────────────────────────────────────────────────────────────── */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -117,7 +112,6 @@ body {
 
 .btn-sm { padding: 5px 10px; font-size: 13px; border-radius: 8px; }
 
-/* ─── Дрібниці ──────────────────────────────────────────────────────────────── */
 a { color: var(--color-accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
@@ -125,5 +119,4 @@ a:hover { text-decoration: underline; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); border-radius: 8px; }
 
-/* range slider — узгоджений з акцентом */
 input[type="range"] { accent-color: var(--color-accent); }

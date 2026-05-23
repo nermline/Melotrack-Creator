@@ -10,20 +10,17 @@ import (
 	"github.com/nermline/Melotrack-Creator/internal/models"
 )
 
-// ffprobeResult — структура для парсингу виводу ffprobe
 type ffprobeResult struct {
 	Streams []struct {
 		Width    int    `json:"width"`
 		Height   int    `json:"height"`
-		Duration string `json:"duration"` // може бути "N/A" для деяких форматів
+		Duration string `json:"duration"`
 	} `json:"streams"`
 	Format struct {
 		Duration string `json:"duration"`
 	} `json:"format"`
 }
 
-// GetVideoMetadata запускає ffprobe і повертає розміри та тривалість відео.
-// При помилці повертає нулі — валідація скіпається якщо width/height == 0.
 func GetVideoMetadata(filePath string) (width, height int, duration float64) {
 	cmd := exec.Command("ffprobe",
 		"-v", "error",
@@ -54,7 +51,6 @@ func GetVideoMetadata(filePath string) (width, height int, duration float64) {
 		}
 	}
 
-	// Fallback: duration з секції format (надійніше для деяких контейнерів)
 	if duration == 0 {
 		if d, err := strconv.ParseFloat(info.Format.Duration, 64); err == nil {
 			duration = d
@@ -67,12 +63,10 @@ func GetVideoMetadata(filePath string) (width, height int, duration float64) {
 func RunFFmpegCropAndTrim(ctx context.Context, rawPath, outPath string, v models.Video) error {
 	args := []string{"-y"}
 
-	// 1. -ss ПЕРЕД -i для швидкого позиціонування (Fast Seeking)
 	if v.StartTime > 0 {
 		args = append(args, "-ss", fmt.Sprintf("%f", v.StartTime))
 	}
 
-	// 2. Точна тривалість (-t) замість -to — гарантує ідеальну довжину при рекодингу
 	if v.EndTime > 0 && v.EndTime > v.StartTime {
 		duration := v.EndTime - v.StartTime
 		args = append(args, "-t", fmt.Sprintf("%f", duration))
@@ -80,10 +74,8 @@ func RunFFmpegCropAndTrim(ctx context.Context, rawPath, outPath string, v models
 
 	args = append(args, "-i", rawPath)
 
-	// 3. Завжди реенкодимо libx264 — новий ключовий кадр ТОЧНО на StartTime
 	if v.Fit {
-		// "Вмістити": вписуємо все відео в кадр 1280×720 (16:9) з чорними полями,
-		// без втрати інформації. Має пріоритет над crop.
+
 		args = append(args, "-vf",
 			"scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1")
 	} else if v.CropWidth > 0 && v.CropHeight > 0 {

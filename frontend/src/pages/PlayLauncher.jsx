@@ -8,8 +8,6 @@ const pageVariants = {
     exit:    { opacity: 0, y: -10, transition: { duration: 0.16, ease: 'easeIn' } },
 };
 
-// Вибір режиму показу. Оператор бачить лише Екран/Пульт (різні пристрої),
-// редактор/адмін додатково мають комбо-превʼю.
 export default function PlayLauncher() {
     const { pid } = useParams();
     const navigate = useNavigate();

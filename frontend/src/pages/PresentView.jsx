@@ -5,8 +5,6 @@ import GameScreen from '../game/GameScreen';
 import GameRemote from '../game/GameRemote';
 import { Button } from '../ui/kit';
 
-// Комбо-режим для редактора/адміна: екран (превʼю) і пульт на одній сторінці.
-// Одне зʼєднання роль remote — і керує, і відображає.
 export default function PresentView() {
     const { pid } = useParams();
     const navigate = useNavigate();

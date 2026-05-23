@@ -16,7 +16,6 @@ func InitDB(path string, adminPassword, editorPassword, operatorPassword string)
 		return nil, fmt.Errorf("initDB(): gorm.Open() Failed to open DB: %v", err)
 	}
 
-	// Прибираємо застарілу схему власності проєктів до AutoMigrate.
 	migrateLegacyProjectOwnership(db)
 
 	err = db.AutoMigrate(
@@ -35,8 +34,6 @@ func InitDB(path string, adminPassword, editorPassword, operatorPassword string)
 
 	seedRoles(db)
 
-	// Початкові акаунти: адмін (повний доступ), редактор (створення/редагування),
-	// оператор (лише читання — для показу як екран або пульт).
 	seeds := []struct{ username, password, role string }{
 		{"admin", adminPassword, "admin"},
 		{"editor", editorPassword, "editor"},
@@ -51,14 +48,6 @@ func InitDB(path string, adminPassword, editorPassword, operatorPassword string)
 	return db, nil
 }
 
-// migrateLegacyProjectOwnership видаляє застарілий стовпець user_id (NOT NULL) та
-// залежні індекси з таблиці projects. Раніше проєкти належали конкретному
-// користувачу; тепер вони спільні для всіх (self-hosted).
-//
-// GORM Migrator.DropColumn для SQLite ненадійний, якщо лишилися залежні індекси
-// (стовпець не видаляється, а INSERT падає на NOT NULL). Тому застосовуємо
-// канонічний SQLite-рецепт: створюємо нову таблицю без user_id, копіюємо дані,
-// підміняємо. Після цього AutoMigrate додасть унікальний індекс на title.
 func migrateLegacyProjectOwnership(db *gorm.DB) {
 	m := db.Migrator()
 	if !m.HasTable(&models.Project{}) || !m.HasColumn(&models.Project{}, "user_id") {
@@ -102,7 +91,6 @@ func seedRoles(db *gorm.DB) {
 	}
 }
 
-// seedUser створює користувача з заданою роллю, якщо його ще немає.
 func seedUser(db *gorm.DB, username, password, roleName string) error {
 	var role models.Role
 	if err := db.Where("name = ?", roleName).First(&role).Error; err != nil {

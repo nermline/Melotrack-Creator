@@ -17,7 +17,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// Записувачі викликів фонових воркерів — щоб тести не зачіпали yt-dlp/ffmpeg.
 var (
 	bgMu          sync.Mutex
 	downloadCalls []uint
@@ -64,8 +63,7 @@ func newTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	// Закриваємо зʼєднання до того, як t.TempDir() видалятиме файл (інакше на
-	// Windows файл лишається заблокованим і cleanup падає).
+
 	t.Cleanup(func() {
 		if sqlDB, err := db.DB(); err == nil {
 			_ = sqlDB.Close()
@@ -125,7 +123,6 @@ func decode[T any](t *testing.T, w *httptest.ResponseRecorder) T {
 	return v
 }
 
-// seedProjectCategory створює проєкт + категорію і повертає їхні ID.
 func seedProjectCategory(t *testing.T, db *gorm.DB) (uint, uint) {
 	t.Helper()
 	p := models.Project{Title: "Project"}
@@ -146,4 +143,4 @@ func mustStatus(t *testing.T, w *httptest.ResponseRecorder, want int) {
 	}
 }
 
-var _ = http.StatusOK // тримаємо імпорт net/http для читабельності тестів
+var _ = http.StatusOK

@@ -11,9 +11,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// GameSession — авторитетна ігрова сесія одного проєкту.
-// Один мьютекс (mu) захищає одночасно стан, знімок, таймер і список клієнтів,
-// бо таймерний колбек і команди пульта змінюють їх із різних горутин.
 type GameSession struct {
 	ProjectID  string
 	db         *gorm.DB
@@ -38,7 +35,7 @@ func (s *GameSession) Register(c *GameClient) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.Clients[c] = true
-	// Новому клієнту одразу надсилаємо поточний стан.
+
 	msg := GameOutgoingMessage{Event: "state_updated", State: s.State}
 	msg.State.ServerNow = nowMs()
 	select {
@@ -56,7 +53,6 @@ func (s *GameSession) Unregister(c *GameClient) {
 	}
 }
 
-// HandleCommand обробляє команду від пульта (тільки screen/remote з роллю remote).
 func (s *GameSession) HandleCommand(action string, value float64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -87,7 +83,6 @@ func (s *GameSession) HandleCommand(action string, value float64) {
 	s.broadcastLocked()
 }
 
-// broadcastLocked розсилає поточний стан усім клієнтам (s.mu має бути взято).
 func (s *GameSession) broadcastLocked() {
 	msg := GameOutgoingMessage{Event: "state_updated", State: s.State}
 	msg.State.ServerNow = nowMs()
@@ -95,7 +90,7 @@ func (s *GameSession) broadcastLocked() {
 		select {
 		case client.Send <- msg:
 		default:
-			// Канал забитий — мертвий клієнт відвалиться у readPump.
+
 		}
 	}
 }
@@ -112,7 +107,6 @@ func (c *GameClient) readPump() {
 			break
 		}
 
-		// Команди приймаємо лише від пульта, щоб екран не міг керувати показом.
 		if c.Role != "remote" {
 			continue
 		}

@@ -6,7 +6,6 @@ import { Button, Glass, Badge, Field, TextInput, Toggle, Spinner } from '../ui/k
 import ImageCropModal from '../editor/ImageCropModal';
 import VideoCropModal from '../editor/VideoCropModal';
 
-// ─── Попередження про незбережені зміни (при виході зі сторінки) ────────────
 function useUnsavedWarning(dirty) {
     useEffect(() => {
         if (!dirty) return;
@@ -16,7 +15,6 @@ function useUnsavedWarning(dirty) {
     }, [dirty]);
 }
 
-// ─── Константи / хелпери ────────────────────────────────────────────────────
 const API_BASE = '';
 const WS_BASE  = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
 const SYNC_THROTTLE_MS = 50;
@@ -88,7 +86,6 @@ function toPayload(f) {
     };
 }
 
-// Чи відрізняється чернетка від збереженого стану (включно зі стейджем фото).
 function isDraftDirty(item, draft) {
     if (!draft) return false;
     if (draft._imageFile || draft._imageDelete) return true;
@@ -105,7 +102,6 @@ function renderBadge(s) {
     return m[s] || ['muted', '—'];
 }
 
-// ─── WS-хук редактора ───────────────────────────────────────────────────────
 function useEditorWS(cid, onMessage) {
     const [wsStatus, setWsStatus] = useState('connecting');
     const wsRef = useRef(null);
@@ -123,7 +119,7 @@ function useEditorWS(cid, onMessage) {
             ws.onopen  = () => { if (alive) setWsStatus('connected'); };
             ws.onerror = () => {};
             ws.onclose = () => { if (!alive) return; setWsStatus('disconnected'); reconnectTimer = setTimeout(connect, 3000); };
-            ws.onmessage = (e) => { try { onMessageRef.current(JSON.parse(e.data)); } catch { /* ignore */ } };
+            ws.onmessage = (e) => { try { onMessageRef.current(JSON.parse(e.data)); } catch {} };
         }
         connect();
         return () => { alive = false; clearTimeout(reconnectTimer); wsRef.current?.close(); };
@@ -135,7 +131,6 @@ function useEditorWS(cid, onMessage) {
     return { wsStatus, sendMessage };
 }
 
-// Плейсхолдер для рамки без завантаженого фото (значок + підпис).
 function EditorPhotoPlaceholder({ label = 'нема фото', size = 28 }) {
     return (
         <div className="flex flex-col items-center justify-center gap-1" style={{ color: 'var(--color-muted)' }}>
@@ -145,7 +140,6 @@ function EditorPhotoPlaceholder({ label = 'нема фото', size = 28 }) {
     );
 }
 
-// ─── Рядок списку (зліва, з drag-реордером) ─────────────────────────────────
 function ItemRow({ item, index, selected, dirty, onSelect, onRender, onRetry, onCommit }) {
     const controls = useDragControls();
     const token = localStorage.getItem('token');
@@ -165,7 +159,6 @@ function ItemRow({ item, index, selected, dirty, onSelect, onRender, onRetry, on
             }}
             onClick={() => onSelect(item.id)}>
             <div className="flex items-center gap-2 px-2 py-2">
-                {/* Ручка перетягування */}
                 <div onPointerDown={(e) => controls.start(e)} title="Перетягніть, щоб змінити порядок"
                     style={{ cursor: 'grab', color: 'var(--color-muted)', padding: '0 4px', touchAction: 'none', fontSize: 18 }}
                     onClick={(e) => e.stopPropagation()}>⠿</div>
@@ -208,7 +201,6 @@ function ItemRow({ item, index, selected, dirty, onSelect, onRender, onRetry, on
     );
 }
 
-// ─── Налаштування питання (праворуч) — керована чернетка зверху ─────────────
 function ItemSettings({ item, draft, onChange, pid, cid, renderVersion, imageVersion,
     onSave, onRender, onDelete, onReset, onRetry }) {
     const [saving, setSaving] = useState(false);
@@ -284,7 +276,6 @@ function ItemSettings({ item, draft, onChange, pid, cid, renderVersion, imageVer
                 <Button size="sm" variant="danger" onClick={() => onDelete(item.id)}>🗑 Видалити</Button>
             </div>
 
-            {/* Відео */}
             <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
                 <span className="text-sm font-medium">Відео {videoChanged && <span style={{ color: 'var(--color-warn)' }}>●</span>}</span>
                 <Button size="sm" variant="primary" disabled={!mediaReady} title={!mediaReady ? 'Відео ще завантажується' : ''}
@@ -322,7 +313,6 @@ function ItemSettings({ item, draft, onChange, pid, cid, renderVersion, imageVer
 
             <div className="my-4" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }} />
 
-            {/* Дві колонки: поля + фото (стек на мобільному) */}
             <div className="grid gap-5 grid-cols-1 sm:grid-cols-[minmax(0,1fr)_220px]">
                 <div className="grid gap-3 content-start">
                     <Field label="YouTube URL" changed={isCh('youtube_url')}
@@ -384,7 +374,6 @@ function ItemSettings({ item, draft, onChange, pid, cid, renderVersion, imageVer
     );
 }
 
-// ─── Форма створення (лише посилання + відповідь) ───────────────────────────
 function CreateForm({ pid, cid, onCreate, onCancel, onDirty }) {
     const [form, setForm] = useState({ youtube_url: '', answer_title: '' });
     const [error, setError] = useState('');
@@ -429,7 +418,6 @@ function CreateForm({ pid, cid, onCreate, onCancel, onDirty }) {
     );
 }
 
-// ─── Сторінка ───────────────────────────────────────────────────────────────
 const pageVariants = {
     initial: { opacity: 0, y: 18 },
     animate: { opacity: 1, y: 0, transition: { duration: 0.22, ease: [0.22, 0.61, 0.36, 1] } },
@@ -440,14 +428,13 @@ export default function CategoryDetail() {
     const { pid, cid } = useParams();
     const navigate = useNavigate();
 
-    const [items, setItems] = useState([]); // у порядку відображення (position ASC)
+    const [items, setItems] = useState([]);
     const [catTitle, setCatTitle] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [isCreating, setIsCreating] = useState(false);
     const [selectedId, setSelectedId] = useState(null);
 
-    // Чернетки, що ЗБЕРІГАЮТЬСЯ між перемиканнями питань: { [id]: form }
     const [drafts, setDrafts] = useState({});
     const [renderVersions, setRenderVersions] = useState({});
     const [imageVersions, setImageVersions] = useState({});
@@ -462,7 +449,6 @@ export default function CategoryDetail() {
     const selectedIdRef = useRef(selectedId);
     useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
 
-    // Множина «брудних» питань — обчислюється з чернеток і поточних даних.
     const dirtyIds = useMemo(() => {
         const s = new Set();
         for (const item of items) if (isDraftDirty(item, drafts[item.id])) s.add(item.id);
@@ -476,7 +462,6 @@ export default function CategoryDetail() {
         navigate(to);
     };
 
-    // Перемикання питання — БЕЗ підтвердження: чернетки зберігаються.
     const selectItem = (id) => { setIsCreating(false); setSelectedId(id); };
 
     const handleWsMessage = useCallback((msg) => {
@@ -508,13 +493,11 @@ export default function CategoryDetail() {
     const sendMessageRef = useRef(sendMessage);
     useEffect(() => { sendMessageRef.current = sendMessage; }, [sendMessage]);
 
-    // Оновлення чернетки конкретного питання (керує дочірнім ItemSettings).
     const updateDraft = useCallback((itemId, patch) => {
         const item = itemsRef.current.find((i) => i.id === itemId);
         const base = draftsRef.current[itemId] ?? (item ? itemToForm(item) : {});
         const next = { ...base, ...patch };
         setDrafts((prev) => ({ ...prev, [itemId]: next }));
-        // throttled live-sync (без локального файлу/намірів про фото)
         const now = Date.now();
         if (now - lastSyncTimeRef.current >= SYNC_THROTTLE_MS) {
             lastSyncTimeRef.current = now;
@@ -545,12 +528,11 @@ export default function CategoryDetail() {
         const hasDownloading = items.some((i) => i.video?.media?.status === 'downloading');
         if (hasDownloading && !pollingRef.current) {
             pollingRef.current = setInterval(async () => {
-                try { const r = await api.get(`/api/projects/${pid}/categories/${cid}/items`); setItems(r.data || []); } catch { /* ignore */ }
+                try { const r = await api.get(`/api/projects/${pid}/categories/${cid}/items`); setItems(r.data || []); } catch {}
             }, 4000);
         } else if (!hasDownloading && pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
     }, [items, pid, cid]);
 
-    // Збереження одного питання; після успіху чернетка очищується (зникає «брудність»).
     const saveItem = useCallback(async (itemId, draft) => {
         const r = await api.put(`/api/projects/${pid}/categories/${cid}/items/${itemId}`, toPayload(draft));
         let updated = r.data;
@@ -568,7 +550,6 @@ export default function CategoryDetail() {
         return updated;
     }, [pid, cid]);
 
-    // Зберегти ВСІ незбережені питання одразу.
     const handleSaveAll = async () => {
         setSavingAll(true);
         try {
@@ -598,11 +579,9 @@ export default function CategoryDetail() {
         } catch (err) { alert(err.response?.data?.error || 'Помилка рендеру'); }
     };
 
-    // Перезапуск завантаження для відео, що провалилось (кнопка "спробувати ще раз").
     const handleRetryDownload = async (itemId) => {
         try {
             await api.post(`/api/projects/${pid}/categories/${cid}/items/${itemId}/redownload`);
-            // Оптимістично переводимо media у "downloading" → запускається опитування статусу.
             setItems((prev) => prev.map((i) => i.id === itemId
                 ? { ...i, video: { ...i.video, media: { ...(i.video?.media || {}), status: 'downloading' } } }
                 : i));
@@ -616,8 +595,8 @@ export default function CategoryDetail() {
         if (!it || newIndex === it.position) return;
         try {
             await api.put(`/api/projects/${pid}/categories/${cid}/items/${id}`, { position: newIndex });
-        } catch { /* ignore, перезавантажимо */ }
-        try { const r = await api.get(`/api/projects/${pid}/categories/${cid}/items`); setItems(r.data || []); } catch { /* ignore */ }
+        } catch {}
+        try { const r = await api.get(`/api/projects/${pid}/categories/${cid}/items`); setItems(r.data || []); } catch {}
     }, [pid, cid]);
 
     if (loading) return <div className="p-6"><Spinner /> <span className="ml-2">Завантаження…</span></div>;
@@ -641,7 +620,6 @@ export default function CategoryDetail() {
                 <h1 className="mt-2 mb-4 text-2xl sm:text-3xl font-bold" style={{ color: '#fff' }}>{catTitle}</h1>
 
                 <div className="grid gap-4 grid-cols-1 lg:grid-cols-[minmax(360px,480px)_minmax(0,1fr)]">
-                    {/* ЛІВОРУЧ: список */}
                     <div>
                         <div className="flex flex-wrap items-center gap-2 mb-3">
                             <Button variant="primary" size="sm" onClick={() => { setIsCreating(true); setSelectedId(null); }}>+ Нове питання</Button>
@@ -660,7 +638,6 @@ export default function CategoryDetail() {
                         )}
                     </div>
 
-                    {/* ПРАВОРУЧ: налаштування */}
                     <div className="self-start">
                         <div className="mb-3 flex">
                             <Button variant="primary" onClick={handleSaveAll} disabled={savingAll || dirtyIds.size === 0}

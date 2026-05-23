@@ -3,7 +3,6 @@ import api from '../api';
 
 const WS_BASE = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
 
-// Людські назви фаз для пульта/статусу.
 export const PHASE_LABELS = {
     welcome: 'Привітання',
     category_title: 'Назва категорії',
@@ -27,7 +26,6 @@ export function answerImg(path) {
     return `${path}?token=${encodeURIComponent(token())}`;
 }
 
-// Час, що лишився у поточній фазі (мс), з урахуванням зсуву годинника сервер↔клієнт.
 export function remainingMs(state, offset) {
     if (!state) return 0;
     if (state.paused) return state.remaining_ms || 0;
@@ -35,7 +33,6 @@ export function remainingMs(state, offset) {
     return Math.max(0, state.phase_ends_at - (Date.now() + offset));
 }
 
-// useProject завантажує проєкт один раз і повертає відсортовані категорії/питання.
 export function useProject(pid) {
     const [project, setProject] = useState(null);
     const [cats, setCats] = useState([]);
@@ -62,8 +59,6 @@ export function useProject(pid) {
     return { project, cats, error };
 }
 
-// useGameWS відкриває WebSocket ігрової сесії з заданою роллю (screen|remote).
-// Повертає поточний стан, статус зʼєднання, зсув годинника та функцію надсилання команд.
 export function useGameWS(pid, role) {
     const [state, setState] = useState(null);
     const [status, setStatus] = useState('connecting');
@@ -96,7 +91,7 @@ export function useGameWS(pid, role) {
                         offsetRef.current = (msg.state.server_now || Date.now()) - Date.now();
                         setState(msg.state);
                     }
-                } catch { /* ignore malformed frame */ }
+                } catch {}
             };
         }
 

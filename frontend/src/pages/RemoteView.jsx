@@ -4,7 +4,6 @@ import { useGameWS, useProject } from '../game/useGame';
 import GameRemote from '../game/GameRemote';
 import { Button } from '../ui/kit';
 
-// Керування екраном (роль remote — надсилає команди показу). Mobile-first.
 export default function RemoteView() {
     const { pid } = useParams();
     const navigate = useNavigate();

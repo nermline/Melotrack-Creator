@@ -34,7 +34,7 @@ export default function Projects() {
     }, []);
 
     const handleLogout = async () => {
-        try { await api.post('/api/logout'); } catch { /* ignore */ }
+        try { await api.post('/api/logout'); } catch {}
         localStorage.removeItem('token'); localStorage.removeItem('role');
         navigate('/login');
     };

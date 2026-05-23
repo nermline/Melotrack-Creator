@@ -17,13 +17,10 @@ import (
 )
 
 var (
-	activeDownloadWorkers sync.Map // mediaID -> cancelFunc
-	activeRenderWorkers   sync.Map // itemID -> cancelFunc
+	activeDownloadWorkers sync.Map
+	activeRenderWorkers   sync.Map
 )
 
-// triggerDownload запускає фонове завантаження оригіналу для media у горутині.
-// Винесено у змінну, щоб тести могли підмінити її без реального виклику yt-dlp.
-// Якщо для цього media вже активне завантаження — повторно не запускає.
 var triggerDownload = func(db *gorm.DB, mediaID uint, url string) {
 	if _, active := activeDownloadWorkers.Load(mediaID); active {
 		return
@@ -36,8 +33,6 @@ var triggerDownload = func(db *gorm.DB, mediaID uint, url string) {
 	}()
 }
 
-// triggerRender запускає фоновий рендер (ffmpeg) у горутині. Винесено у змінну,
-// щоб тести могли підмінити її без реального виклику ffmpeg.
 var triggerRender = func(db *gorm.DB, hub *ws.Hub, item models.QuizItem, projectID, categoryID string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	activeRenderWorkers.Store(item.ID, cancel)
@@ -100,7 +95,6 @@ type UpdateQuizItemInput struct {
 	Answer    *UpdateAnswerInput `json:"answer"`
 }
 
-// categoryExists перевіряє, що категорія існує в межах проєкту (проєкти спільні).
 func categoryExists(c *gin.Context, db *gorm.DB, projectID string, categoryID string) bool {
 	if !projectExists(c, db, projectID) {
 		return false
@@ -158,7 +152,7 @@ func CreateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid youtube url"})
 			return
 		}
-		// Зберігаємо очищений URL (без &list= та інших параметрів плейлисту)
+
 		cleanYtURL := fmt.Sprintf("https://www.youtube.com/watch?v=%s", ytID)
 
 		var item models.QuizItem
@@ -166,7 +160,7 @@ func CreateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 		var needDownload bool
 
 		err := db.Transaction(func(tx *gorm.DB) error {
-			// 1. Отримуємо або створюємо Media
+
 			err := tx.Where("you_tube_id = ?", ytID).First(&mediaFile).Error
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				mediaFile = models.Media{
@@ -180,7 +174,7 @@ func CreateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 			} else if err != nil {
 				return err
 			} else if mediaFile.Status == "error" {
-				// Попередня спроба завантаження провалилась — перезапускаємо.
+
 				if err := tx.Model(&mediaFile).Update("status", "downloading").Error; err != nil {
 					return err
 				}
@@ -188,7 +182,6 @@ func CreateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 				needDownload = true
 			}
 
-			// 2. Створюємо QuizItem
 			var maxPosition int
 			tx.Model(&models.QuizItem{}).
 				Where("category_id = ?", categoryID).
@@ -225,8 +218,6 @@ func CreateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 			return
 		}
 
-		// Запускаємо завантаження оригінального відео, якщо його ще немає в базі
-		// (або попередня спроба провалилась).
 		if needDownload {
 			triggerDownload(db, mediaFile.ID, item.Video.YouTubeURL)
 		}
@@ -242,15 +233,11 @@ func CreateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 	}
 }
 
-// validateVideoCropParams перевіряє коректність часових меж та crop-прямокутника
-// відносно реальних розмірів і тривалості завантаженого відео.
-// Якщо метадані ще не заповнені (width/height/duration == 0) — пропускаємо перевірку.
 func validateVideoCropParams(v models.Video, m models.Media) error {
 	if m.Width == 0 || m.Height == 0 || m.Duration == 0 {
-		return nil // метадані ще не завантажені, перевірка пізніше
+		return nil
 	}
 
-	// Часові мітки
 	if v.StartTime < 0 {
 		return fmt.Errorf("start_time не може бути від'ємним")
 	}
@@ -264,12 +251,10 @@ func validateVideoCropParams(v models.Video, m models.Media) error {
 		return fmt.Errorf("end_time (%.2fs) виходить за межі тривалості відео (%.2fs)", v.EndTime, m.Duration)
 	}
 
-	// У режимі "вмістити" crop ігнорується — пропускаємо перевірку рамки.
 	if v.Fit {
 		return nil
 	}
 
-	// Crop-прямокутник (перевіряємо лише якщо задано)
 	if v.CropWidth > 0 || v.CropHeight > 0 {
 		if v.CropX < 0 {
 			return fmt.Errorf("crop_x не може бути від'ємним")
@@ -315,7 +300,7 @@ func UpdateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 		var paramsChanged bool
 		var newMediaFile models.Media
 		var needDownload bool
-		var validationErr error // відокремлюємо помилки валідації від DB-помилок
+		var validationErr error
 
 		err := db.Transaction(func(tx *gorm.DB) error {
 			if err := tx.Preload("Answer").Preload("Video.Media").Where("id = ? AND category_id = ?", itemID, categoryID).First(&updatedItem).Error; err != nil {
@@ -330,7 +315,7 @@ func UpdateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 				if input.Video.YoutubeURL != nil && updatedItem.Video.YouTubeURL != *input.Video.YoutubeURL {
 					urlChanged = true
 					ytID := media.ExtractYouTubeID(*input.Video.YoutubeURL)
-					// Зберігаємо очищений URL (без &list= тощо)
+
 					updatedItem.Video.YouTubeURL = fmt.Sprintf("https://www.youtube.com/watch?v=%s", ytID)
 
 					err := tx.Where("you_tube_id = ?", ytID).First(&newMediaFile).Error
@@ -346,7 +331,7 @@ func UpdateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 					} else if err != nil {
 						return err
 					} else if newMediaFile.Status == "error" {
-						// Попередня спроба провалилась — перезавантажуємо.
+
 						if err := tx.Model(&newMediaFile).Update("status", "downloading").Error; err != nil {
 							return err
 						}
@@ -392,7 +377,7 @@ func UpdateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 			}
 
 			if input.Answer != nil {
-				// ... (оновлення полів Answer без змін) ...
+
 				if input.Answer.Title != nil {
 					updatedItem.Answer.Title = *input.Answer.Title
 				}
@@ -402,7 +387,7 @@ func UpdateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 			}
 
 			if input.Position != nil {
-				// ... (оновлення Position без змін) ...
+
 				newPos := *input.Position
 				oldPos := updatedItem.Position
 				if newPos != oldPos {
@@ -434,7 +419,6 @@ func UpdateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 				updatedItem.Video.RenderStatus = "unrendered"
 			}
 
-			// Валідація crop та часових меж відносно реальних розмірів відео
 			if ve := validateVideoCropParams(updatedItem.Video, updatedItem.Video.Media); ve != nil {
 				validationErr = ve
 				return ve
@@ -463,16 +447,13 @@ func UpdateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 		hub.SystemBroadcast(categoryID, ws.EditorMessage{
 			Action: "item_updated",
 			ItemID: updatedItem.ID,
-			Data:   updatedItem, // Відправляємо повністю оновлений об'єкт
+			Data:   updatedItem,
 		})
 
 		c.JSON(http.StatusOK, updatedItem)
 	}
 }
 
-// RetryDownload перезапускає завантаження оригінального відео для item, чий media
-// у статусі "error" (або застряг). Дозволяє кнопці "спробувати ще раз" на фронті
-// перезавантажити відео без повторного створення елемента.
 func RetryDownload(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		projectID := c.Param("pid")
@@ -494,7 +475,6 @@ func RetryDownload(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 			return
 		}
 
-		// Якщо вже завантажується — не дублюємо.
 		if _, active := activeDownloadWorkers.Load(*item.Video.MediaID); active {
 			c.JSON(http.StatusConflict, gin.H{"error": "download already in progress"})
 			return
@@ -508,7 +488,6 @@ func RetryDownload(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 
 		triggerDownload(db, mID, item.Video.YouTubeURL)
 
-		// Сповіщаємо редакторів, щоб оновили статус і почали опитування.
 		item.Video.Media.Status = "downloading"
 		hub.SystemBroadcast(categoryID, ws.EditorMessage{
 			Action: "item_updated",
@@ -520,7 +499,6 @@ func RetryDownload(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 	}
 }
 
-// RenderQuizItem - новий ендпоінт для застосування налаштувань (ffmpeg)
 func RenderQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		projectID := c.Param("pid")
@@ -542,13 +520,11 @@ func RenderQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 			return
 		}
 
-		// Валідація crop та часових меж відносно реальних розмірів відео
 		if err := validateVideoCropParams(item.Video, item.Video.Media); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		// Відміняємо попередній рендер, якщо він ще йде
 		if cancelFunc, exists := activeRenderWorkers.Load(item.ID); exists {
 			cancelFunc.(context.CancelFunc)()
 		}
@@ -586,7 +562,6 @@ func DeleteQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 			oldPos := item.Position
 			catID := item.CategoryID
 
-			// Відміняємо рендер, якщо він працює
 			if cancelFunc, exists := activeRenderWorkers.Load(item.ID); exists {
 				cancelFunc.(context.CancelFunc)()
 			}

@@ -3,15 +3,9 @@ import Cropper from 'react-easy-crop';
 import { Modal, Button, Spinner, Segmented } from '../ui/kit';
 import { getCroppedBlob, getFittedBlob } from './cropUtils';
 
-/**
- * Підготовка квадратного фото відповіді з локального файлу (object URL).
- *  • "Заповнити" — обрізання рамкою з зумом/перетягуванням (react-easy-crop);
- *  • "Вмістити"  — усе зображення вписується у квадрат із полями (без втрат).
- * Назовні віддається готовий JPEG-Blob.
- */
 export default function ImageCropModal({ open, file, outputSize = 800, onCancel, onConfirm }) {
     const [src, setSrc] = useState(null);
-    const [mode, setMode] = useState('crop'); // 'crop' | 'fit'
+    const [mode, setMode] = useState('crop');
     const [crop, setCrop] = useState({ x: 0, y: 0 });
     const [zoom, setZoom] = useState(1);
     const [areaPixels, setAreaPixels] = useState(null);

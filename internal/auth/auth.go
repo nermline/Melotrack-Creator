@@ -63,9 +63,6 @@ func identityHandler() func(c *gin.Context) any {
 	}
 }
 
-// authorizer enforces role-based access:
-//   - admin, editor — full access
-//   - operator      — read-only (GET requests only)
 func authorizer() func(c *gin.Context, data any) bool {
 	return func(c *gin.Context, data any) bool {
 		claims, ok := data.(map[string]interface{})

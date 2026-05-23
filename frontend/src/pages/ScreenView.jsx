@@ -4,14 +4,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useGameWS, useProject } from '../game/useGame';
 import GameScreen from '../game/GameScreen';
 
-// Повноекранний показ (роль screen — лише відображення, керувати не може).
 export default function ScreenView() {
     const { pid } = useParams();
     const navigate = useNavigate();
     const { project, cats, error } = useProject(pid);
     const { state, offsetRef, status } = useGameWS(pid, 'screen');
 
-    // Панель керування (повноекранний/вихід) сама ховається у бездіяльності.
     const [showBar, setShowBar] = useState(true);
     const [isFs, setIsFs] = useState(false);
     const hideRef = useRef(null);

@@ -39,7 +39,7 @@ func TestCreateQuizItem_NewMediaTriggersDownload(t *testing.T) {
 	if downloadCount() != 1 {
 		t.Errorf("expected 1 download trigger, got %d", downloadCount())
 	}
-	// Media рядок створено зі статусом downloading.
+
 	var media models.Media
 	if err := db.Where("you_tube_id = ?", sampleYtID).First(&media).Error; err != nil {
 		t.Fatalf("media not created: %v", err)
@@ -55,7 +55,6 @@ func TestCreateQuizItem_ReusesReadyMediaNoDownload(t *testing.T) {
 	r := newTestRouter(db)
 	pid, cid := seedProjectCategory(t, db)
 
-	// Уже завантажене media — не має тригерити нове завантаження.
 	db.Create(&models.Media{YouTubeID: sampleYtID, Status: "ready", FilePath: "raw.mp4", Width: 1920, Height: 1080, Duration: 100})
 
 	mustStatus(t, doJSON(r, "POST", itemsURL(pid, cid), createItemBody("Song")), http.StatusCreated)
@@ -64,8 +63,6 @@ func TestCreateQuizItem_ReusesReadyMediaNoDownload(t *testing.T) {
 	}
 }
 
-// Це перевіряє виправлення бага: повторне додавання відео, чиє завантаження
-// провалилось, має ПЕРЕЗАПУСКАТИ завантаження.
 func TestCreateQuizItem_RetriesErroredMedia(t *testing.T) {
 	resetBg()
 	db := newTestDB(t)
@@ -119,7 +116,6 @@ func TestUpdateQuizItem_ParamsResetRenderStatus(t *testing.T) {
 	db.Create(&models.Media{YouTubeID: sampleYtID, Status: "ready", FilePath: "raw.mp4", Width: 1920, Height: 1080, Duration: 100})
 	item := decode[models.QuizItem](t, doJSON(r, "POST", itemsURL(pid, cid), createItemBody("Song")))
 
-	// Імітуємо вже відрендерений стан.
 	db.Model(&models.QuizItem{}).Where("id = ?", item.ID).Update("render_status", "ready")
 
 	body := map[string]any{"video": map[string]any{"start_time": 5.0, "end_time": 20.0}}
@@ -141,7 +137,6 @@ func TestUpdateQuizItem_CropValidation(t *testing.T) {
 	db.Create(&models.Media{YouTubeID: sampleYtID, Status: "ready", FilePath: "raw.mp4", Width: 100, Height: 100, Duration: 30})
 	item := decode[models.QuizItem](t, doJSON(r, "POST", itemsURL(pid, cid), createItemBody("Song")))
 
-	// Crop виходить за межі (80+50 > 100).
 	body := map[string]any{"video": map[string]any{"crop_x": 80, "crop_y": 0, "crop_width": 50, "crop_height": 50}}
 	w := doJSON(r, "PUT", fmt.Sprintf("%s/%d", itemsURL(pid, cid), item.ID), body)
 	mustStatus(t, w, http.StatusBadRequest)
@@ -154,7 +149,7 @@ func TestUpdateQuizItem_StartBeyondDuration(t *testing.T) {
 	db.Create(&models.Media{YouTubeID: sampleYtID, Status: "ready", FilePath: "raw.mp4", Width: 100, Height: 100, Duration: 30})
 	item := decode[models.QuizItem](t, doJSON(r, "POST", itemsURL(pid, cid), createItemBody("Song")))
 
-	body := map[string]any{"video": map[string]any{"start_time": 40.0}} // > duration 30
+	body := map[string]any{"video": map[string]any{"start_time": 40.0}}
 	w := doJSON(r, "PUT", fmt.Sprintf("%s/%d", itemsURL(pid, cid), item.ID), body)
 	mustStatus(t, w, http.StatusBadRequest)
 }
@@ -168,7 +163,6 @@ func TestUpdateQuizItem_Reorder(t *testing.T) {
 	i1 := decode[models.QuizItem](t, doJSON(r, "POST", itemsURL(pid, cid), createItemBody("I1")))
 	i2 := decode[models.QuizItem](t, doJSON(r, "POST", itemsURL(pid, cid), createItemBody("I2")))
 
-	// Перемістити i2 на позицію 0.
 	body := map[string]any{"position": 0}
 	mustStatus(t, doJSON(r, "PUT", fmt.Sprintf("%s/%d", itemsURL(pid, cid), i2.ID), body), http.StatusOK)
 
@@ -239,7 +233,7 @@ func TestRetryDownload_ErroredMedia(t *testing.T) {
 	r := newTestRouter(db)
 	pid, cid := seedProjectCategory(t, db)
 	db.Create(&models.Media{YouTubeID: sampleYtID, Status: "error", FilePath: ""})
-	// створення reused-media (error) тригерне 1 завантаження; скидаємо лічильник.
+
 	item := decode[models.QuizItem](t, doJSON(r, "POST", itemsURL(pid, cid), createItemBody("Song")))
 	resetBg()
 
@@ -266,7 +260,7 @@ func TestRetryDownload_AlreadyInProgress(t *testing.T) {
 	var got models.QuizItem
 	db.Preload("Video.Media").Where("id = ?", item.ID).First(&got)
 	mID := *got.Video.MediaID
-	// Імітуємо активне завантаження.
+
 	activeDownloadWorkers.Store(mID, context.CancelFunc(func() {}))
 	defer activeDownloadWorkers.Delete(mID)
 

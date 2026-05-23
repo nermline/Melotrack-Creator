@@ -61,7 +61,7 @@ func TestLoadConfig_HostPortOverride(t *testing.T) {
 func TestLoadConfig_MissingRequired(t *testing.T) {
 	clearEnv()
 	defer clearEnv()
-	// нічого не виставляємо — обовʼязкові поля відсутні
+
 	if _, err := LoadConfig(); err == nil {
 		t.Error("expected error when required env vars are missing")
 	}

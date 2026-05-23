@@ -9,13 +9,6 @@ const fmt = (s) => {
     return `${m}:${String(sec).padStart(2, '0')}`;
 };
 
-/**
- * Налаштування відео:
- *  • режим "Обрізати" — рамка 16:9 (перетягування + ресайз) → пікселі оригіналу;
- *  • режим "Вмістити" — усе відео вписується в 16:9 (letterbox), без втрат;
- *  • тривалість кліпу D + вибір початку S (S ≤ тривалість − D);
- *  • курсор поточного кадру на таймлайні.
- */
 export default function VideoCropModal({ open, videoUrl, mediaW, mediaH, duration, initial, onCancel, onConfirm }) {
     const haveMeta = mediaW > 0 && mediaH > 0 && duration > 0;
 
@@ -26,7 +19,7 @@ export default function VideoCropModal({ open, videoUrl, mediaW, mediaH, duratio
         return { x: (1 - w) / 2, y: (1 - hNorm(w)) / 2, w };
     }, [mediaW, mediaH, hNorm]);
 
-    const [mode, setMode] = useState('crop'); // 'crop' | 'fit'
+    const [mode, setMode] = useState('crop');
     const [crop, setCrop] = useState({ x: 0, y: 0, w: 1 });
     const [dur, setDur] = useState(10);
     const [start, setStart] = useState(0);
@@ -56,18 +49,13 @@ export default function VideoCropModal({ open, videoUrl, mediaW, mediaH, duratio
     const maxStart = Math.max(0, duration - dur);
     useEffect(() => { setStart((s) => clamp(s, 0, maxStart)); }, [maxStart]);
 
-    // Перемотка плеєра на початок кліпу, коли не відтворюється
     useEffect(() => {
         const v = videoRef.current;
         if (!v || !open || playing) return;
-        const apply = () => { try { v.currentTime = start; setCur(start); } catch { /* ignore */ } };
+        const apply = () => { try { v.currentTime = start; setCur(start); } catch {} };
         if (v.readyState >= 1) apply(); else v.addEventListener('loadedmetadata', apply, { once: true });
     }, [start, open, playing]);
 
-    // Курсор часу + цикл прев'ю відрізка.
-    // Залежність від `open` обов'язкова: відео-елемент монтується лише після
-    // відкриття модалки, тож слухача треба (пере)чіпляти саме тоді — інакше
-    // курсор не рухатиметься, поки не зміниться start/dur.
     useEffect(() => {
         const v = videoRef.current;
         if (!v || !open) return;
@@ -86,7 +74,6 @@ export default function VideoCropModal({ open, videoUrl, mediaW, mediaH, duratio
         else { v.currentTime = start; v.play().then(() => setPlaying(true)).catch(() => {}); }
     };
 
-    // ── Перетягування / ресайз рамки (лише в режимі crop) ────────────────────
     const dragRef = useRef(null);
     const onFramePointerDown = (e, m) => {
         e.preventDefault(); e.stopPropagation();
@@ -127,7 +114,6 @@ export default function VideoCropModal({ open, videoUrl, mediaW, mediaH, duratio
 
     const h = hNorm(crop.w);
     const isFit = mode === 'fit';
-    // У режимі crop контейнер має пропорції відео; у fit — кадр 16:9 (letterbox).
     const containerPct = isFit ? 56.25 : (haveMeta ? (mediaH / mediaW) * 100 : 56.25);
 
     return (
@@ -146,7 +132,6 @@ export default function VideoCropModal({ open, videoUrl, mediaW, mediaH, duratio
                         </span>
                     </div>
 
-                    {/* Кадр */}
                     <div ref={frameRef}
                         style={{ position: 'relative', width: '100%', paddingTop: `${containerPct}%`,
                             background: '#000', borderRadius: 12, overflow: 'hidden', userSelect: 'none' }}>
@@ -168,7 +153,6 @@ export default function VideoCropModal({ open, videoUrl, mediaW, mediaH, duratio
                         )}
                     </div>
 
-                    {/* Таймлайн */}
                     <div className="mt-5">
                         <div className="flex items-center justify-between mb-1 text-sm" style={{ color: 'var(--color-muted)' }}>
                             <span>Кадр зараз: <b style={{ color: 'var(--color-text)' }}>{fmt(cur)}</b></span>
@@ -177,7 +161,6 @@ export default function VideoCropModal({ open, videoUrl, mediaW, mediaH, duratio
                         <Timeline duration={duration} start={start} dur={dur} maxStart={maxStart} playhead={cur} onSeek={setStart} />
                     </div>
 
-                    {/* Контроли */}
                     <div className="mt-4 flex flex-wrap items-end gap-4">
                         <Field label="Тривалість кліпу, с" className="w-40">
                             <NumberInput min={1} max={Math.floor(duration)} step={0.5} value={dur}
@@ -196,8 +179,6 @@ export default function VideoCropModal({ open, videoUrl, mediaW, mediaH, duratio
     );
 }
 
-// Таймлайн: вся смуга = відео; зелена зона = дозволений початок; акцент = вибраний кліп;
-// білий кружок = ручка початку; тонка лінія = поточний кадр (playhead).
 function Timeline({ duration, start, dur, maxStart, playhead, onSeek }) {
     const barRef = useRef(null);
     const dragging = useRef(false);
@@ -220,10 +201,8 @@ function Timeline({ duration, start, dur, maxStart, playhead, onSeek }) {
             <div style={{ position: 'absolute', inset: 0, left: 0, width: pct(maxStart), background: 'rgba(68,208,123,0.14)', borderRadius: 8 }} />
             <div style={{ position: 'absolute', top: 0, bottom: 0, left: pct(start), width: pct(dur),
                 background: 'linear-gradient(180deg, rgba(124,131,255,0.55), rgba(108,114,245,0.4))', borderRadius: 8 }} />
-            {/* поточний кадр */}
             <div style={{ position: 'absolute', top: -3, bottom: -3, left: pct(playhead), width: 2,
                 background: 'var(--color-accent2)', boxShadow: '0 0 6px var(--color-accent2)' }} />
-            {/* ручка початку */}
             <div style={{ position: 'absolute', top: '50%', left: pct(start), transform: 'translate(-50%,-50%)',
                 width: 14, height: 14, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.6)' }} />
         </div>

@@ -10,7 +10,6 @@ const pageVariants = {
     exit:    { opacity: 0, y: -10, transition: { duration: 0.16, ease: 'easeIn' } },
 };
 
-// ─── Рядок категорії (з drag-реордером, як у списку питань) ─────────────────
 function CategoryRow({ cat, index, canEdit, editing, editTitle, setEditTitle,
     onStartEdit, onSubmitEdit, onCancelEdit, onDelete, onOpen, onCommit }) {
     const controls = useDragControls();
@@ -70,7 +69,7 @@ export default function ProjectDetail() {
     const navigate = useNavigate();
 
     const [project, setProject] = useState(null);
-    const [categories, setCategories] = useState([]); // у порядку відображення (position ASC)
+    const [categories, setCategories] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
@@ -146,9 +145,9 @@ export default function ProjectDetail() {
         const newIndex = arr.findIndex((c) => c.id === id);
         const c = arr[newIndex];
         if (!c || newIndex === c.position) return;
-        try { await api.put(`/api/projects/${pid}/categories/${id}`, { position: newIndex }); } catch { /* ignore */ }
+        try { await api.put(`/api/projects/${pid}/categories/${id}`, { position: newIndex }); } catch {}
         try { const res = await api.get(`/api/projects/${pid}`); setCategories(sortCats(res.data.categories || [])); }
-        catch { /* ignore */ }
+        catch {}
     };
 
     return (

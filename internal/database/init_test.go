@@ -9,7 +9,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// closeOnCleanup закриває зʼєднання до видалення тимчасового файлу (Windows lock).
 func closeOnCleanup(t *testing.T, db *gorm.DB) {
 	t.Cleanup(func() {
 		if sqlDB, err := db.DB(); err == nil {
@@ -36,7 +35,6 @@ func TestInitDB_SeedsRolesAndUsers(t *testing.T) {
 		t.Errorf("users = %d, want 3", users)
 	}
 
-	// Кожен користувач має існувати з правильною роллю.
 	for _, u := range []struct{ name, role string }{{"admin", "admin"}, {"editor", "editor"}, {"operator", "operator"}} {
 		var user models.User
 		if err := db.Preload("Role").Where("username = ?", u.name).First(&user).Error; err != nil {
@@ -55,7 +53,7 @@ func TestInitDB_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first InitDB: %v", err)
 	}
-	// Закриваємо перше зʼєднання, щоб друге відкриття того ж файлу не конфліктувало.
+
 	if sqlDB, err := db1.DB(); err == nil {
 		_ = sqlDB.Close()
 	}
@@ -71,9 +69,6 @@ func TestInitDB_Idempotent(t *testing.T) {
 	}
 }
 
-// TestMigrateLegacyProjectOwnership перевіряє виправлення бага NOT NULL user_id:
-// стара таблиця projects зі стовпцем user_id NOT NULL має бути перебудована без нього,
-// після чого вставка проєкту без user_id має працювати.
 func TestMigrateLegacyProjectOwnership(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "legacy.db")
 	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
@@ -82,7 +77,6 @@ func TestMigrateLegacyProjectOwnership(t *testing.T) {
 	}
 	closeOnCleanup(t, db)
 
-	// Симулюємо стару схему з user_id NOT NULL та індексом.
 	stmts := []string{
 		`CREATE TABLE projects (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -105,14 +99,12 @@ func TestMigrateLegacyProjectOwnership(t *testing.T) {
 		t.Fatal("user_id column should have been removed")
 	}
 
-	// Дані збережено.
 	var count int64
 	db.Table("projects").Count(&count)
 	if count != 2 {
 		t.Errorf("expected 2 preserved rows, got %d", count)
 	}
 
-	// Після AutoMigrate вставка без user_id має працювати (це й був баг).
 	if err := db.AutoMigrate(&models.Project{}); err != nil {
 		t.Fatalf("AutoMigrate after migration: %v", err)
 	}
@@ -121,7 +113,6 @@ func TestMigrateLegacyProjectOwnership(t *testing.T) {
 	}
 }
 
-// Якщо таблиці немає або стовпця user_id немає — міграція має бути безпечним no-op.
 func TestMigrateLegacyProjectOwnership_NoOp(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "noop.db")
 	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
@@ -129,10 +120,9 @@ func TestMigrateLegacyProjectOwnership_NoOp(t *testing.T) {
 		t.Fatalf("open: %v", err)
 	}
 	closeOnCleanup(t, db)
-	// Таблиці ще немає — не має панікувати.
+
 	migrateLegacyProjectOwnership(db)
 
-	// Сучасна схема без user_id — також no-op.
 	if err := db.AutoMigrate(&models.Project{}); err != nil {
 		t.Fatalf("AutoMigrate: %v", err)
 	}

@@ -12,7 +12,7 @@ var Upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true // Дозволено все (для розробки)
+		return true
 	},
 }
 
@@ -46,7 +46,7 @@ func (h *Hub) GetOrCreateGameSession(db *gorm.DB, projectID string) *GameSession
 			Phase:     PhaseWelcome,
 		},
 	}
-	// Завантажуємо знімок проєкту, щоб одразу знати кількість категорій.
+
 	session.Categories = loadSnapshot(db, projectID)
 	session.State.TotalCategories = len(session.Categories)
 
@@ -70,7 +70,6 @@ func (h *Hub) GetOrCreateEditorRoom(categoryID string) *EditorRoom {
 	return room
 }
 
-// SystemBroadcast дозволяє REST-контролерам надсилати сповіщення в редактор
 func (h *Hub) SystemBroadcast(categoryID string, msg EditorMessage) {
 	h.mu.RLock()
 	room, exists := h.EditorRooms[categoryID]

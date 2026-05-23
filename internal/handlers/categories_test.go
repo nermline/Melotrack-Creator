@@ -52,7 +52,7 @@ func TestCreateCategory_SameTitleDifferentProjects(t *testing.T) {
 	p1 := decode[models.Project](t, doJSON(r, "POST", "/api/projects", map[string]string{"title": "P1"}))
 	p2 := decode[models.Project](t, doJSON(r, "POST", "/api/projects", map[string]string{"title": "P2"}))
 	mustStatus(t, doJSON(r, "POST", fmt.Sprintf("/api/projects/%d/categories", p1.ID), map[string]string{"title": "Shared"}), http.StatusCreated)
-	// Та сама назва в іншому проєкті — дозволено.
+
 	mustStatus(t, doJSON(r, "POST", fmt.Sprintf("/api/projects/%d/categories", p2.ID), map[string]string{"title": "Shared"}), http.StatusCreated)
 }
 
@@ -96,7 +96,6 @@ func TestUpdateCategory_Reorder(t *testing.T) {
 	c1 := decode[models.Category](t, doJSON(r, "POST", base, map[string]string{"title": "C1"}))
 	c2 := decode[models.Category](t, doJSON(r, "POST", base, map[string]string{"title": "C2"}))
 
-	// Переміщуємо c2 (поз.2) на початок (поз.0).
 	pos := 0
 	mustStatus(t, doJSON(r, "PUT", fmt.Sprintf("%s/%d", base, c2.ID), map[string]any{"position": pos}), http.StatusOK)
 

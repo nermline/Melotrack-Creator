@@ -1,4 +1,3 @@
-// Допоміжні функції обрізання фото на клієнті (canvas).
 
 function loadImage(src) {
     return new Promise((resolve, reject) => {
@@ -9,10 +8,6 @@ function loadImage(src) {
     });
 }
 
-/**
- * Обрізає зображення за областю в пікселях (від react-easy-crop) у квадрат
- * заданого розміру і повертає JPEG-Blob.
- */
 export async function getCroppedBlob(imageSrc, areaPixels, size = 800) {
     const img = await loadImage(imageSrc);
     const canvas = document.createElement('canvas');
@@ -28,10 +23,6 @@ export async function getCroppedBlob(imageSrc, areaPixels, size = 800) {
     return new Promise((resolve) => canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.9));
 }
 
-/**
- * Вписує ВСЕ зображення у квадрат size×size (без втрати інформації) з полями
- * кольору bg і повертає JPEG-Blob.
- */
 export async function getFittedBlob(imageSrc, size = 800, bg = '#000') {
     const img = await loadImage(imageSrc);
     const canvas = document.createElement('canvas');

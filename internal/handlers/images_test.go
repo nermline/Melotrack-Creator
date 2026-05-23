@@ -48,7 +48,7 @@ func multipartUpload(t *testing.T, r http.Handler, url, field, filename string, 
 }
 
 func TestUploadAnswerImage_OK(t *testing.T) {
-	t.Chdir(t.TempDir()) // файли пишуться в тимчасову теку, не в репозиторій
+	t.Chdir(t.TempDir())
 	db := newTestDB(t)
 	r := newTestRouter(db)
 	pid, cid := seedProjectCategory(t, db)
@@ -78,7 +78,7 @@ func TestUploadAnswerImage_NoFile(t *testing.T) {
 	item := decode[models.QuizItem](t, doJSON(r, "POST", itemsURL(pid, cid), createItemBody("Song")))
 
 	url := fmt.Sprintf("%s/%d/image", itemsURL(pid, cid), item.ID)
-	// POST без файлу.
+
 	req := httptest.NewRequest("POST", url, bytes.NewBufferString(""))
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)

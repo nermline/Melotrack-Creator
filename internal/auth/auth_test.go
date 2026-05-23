@@ -34,7 +34,7 @@ func TestAuthorizer_RolesAndMethods(t *testing.T) {
 		{"operator", http.MethodPost, false},
 		{"operator", http.MethodPut, false},
 		{"operator", http.MethodDelete, false},
-		{"viewer", http.MethodGet, false}, // невідома роль
+		{"viewer", http.MethodGet, false},
 		{"", http.MethodGet, false},
 	}
 	for _, tc := range cases {

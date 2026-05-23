@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-// ─── Кнопка ─────────────────────────────────────────────────────────────────
 export function Button({ variant = '', size = '', className = '', children, ...props }) {
     const v = { primary: 'btn-primary', danger: 'btn-danger', ghost: 'btn-ghost' }[variant] || '';
     const s = size === 'sm' ? 'btn-sm' : '';
@@ -12,12 +11,10 @@ export function Button({ variant = '', size = '', className = '', children, ...p
     );
 }
 
-// ─── Скляна панель ──────────────────────────────────────────────────────────
 export function Glass({ className = '', strong = false, children, ...props }) {
     return <div className={`${strong ? 'glass-2' : 'glass'} ${className}`} {...props}>{children}</div>;
 }
 
-// ─── Бейдж ──────────────────────────────────────────────────────────────────
 export function Badge({ tone = 'muted', children }) {
     const tones = {
         muted: { color: '#cbd5e1', bg: 'rgba(255,255,255,0.08)' },
@@ -34,7 +31,6 @@ export function Badge({ tone = 'muted', children }) {
     );
 }
 
-// ─── Поле (label + підсвітка зміни) ─────────────────────────────────────────
 export function Field({ label, changed, error, hint, className = '', children }) {
     return (
         <label className={`block ${className}`}>
@@ -60,7 +56,6 @@ export function NumberInput({ changed = false, error = false, className = '', ..
     return <input type="number" className={`input ${changed ? 'changed' : ''} ${error ? '!border-[var(--color-danger)]' : ''} ${className}`} {...props} />;
 }
 
-// ─── Перемикач ──────────────────────────────────────────────────────────────
 export function Toggle({ checked, onChange, label, changed }) {
     return (
         <button type="button" onClick={() => onChange(!checked)}
@@ -80,7 +75,6 @@ export function Toggle({ checked, onChange, label, changed }) {
     );
 }
 
-// ─── Модалка (анімована) ────────────────────────────────────────────────────
 export function Modal({ open, onClose, title, children, footer, maxWidth = 760 }) {
     useEffect(() => {
         if (!open) return;
@@ -126,7 +120,6 @@ export function Modal({ open, onClose, title, children, footer, maxWidth = 760 }
     );
 }
 
-// ─── Сегментований перемикач ────────────────────────────────────────────────
 export function Segmented({ value, onChange, options }) {
     return (
         <div className="inline-flex p-1 rounded-lg"
@@ -144,7 +137,6 @@ export function Segmented({ value, onChange, options }) {
     );
 }
 
-// Спінер
 export function Spinner({ size = 18 }) {
     return (
         <motion.span

@@ -16,7 +16,7 @@ import (
 
 func Setup(r *gin.Engine, db *gorm.DB, authMiddleware *jwt.GinJWTMiddleware) {
 	r.Use(cors.New(cors.Config{
-		// Додай сюди порти, на яких крутитиметься твій локальний фронтенд
+
 		AllowOrigins:     []string{"http://localhost:3000", "http://localhost:5173"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
@@ -26,9 +26,6 @@ func Setup(r *gin.Engine, db *gorm.DB, authMiddleware *jwt.GinJWTMiddleware) {
 
 	hub := ws.NewHub()
 
-	// Авторизація під /api/, щоб не конфліктувати з клієнтським маршрутом /login
-	// (сторінка входу SPA). Інакше браузерний перехід на /login потрапляв би на
-	// бекенд і отримував 404 замість сторінки входу.
 	r.POST("/api/login", authMiddleware.LoginHandler)
 	r.GET("/api/refresh", authMiddleware.RefreshHandler)
 
@@ -75,18 +72,12 @@ func Setup(r *gin.Engine, db *gorm.DB, authMiddleware *jwt.GinJWTMiddleware) {
 	serveSPA(r, "./frontend/dist")
 }
 
-// serveSPA роздає зібраний React-фронтенд із distDir (якщо він існує) з тієї ж
-// адреси, що й API (:8080). Завдяки єдиному origin зникають CORS-проблеми й
-// застосунок одразу доступний з інших пристроїв локальної мережі.
-// Усі невідомі (не-API) шляхи віддають index.html для клієнтської маршрутизації.
 func serveSPA(r *gin.Engine, distDir string) {
 	index := filepath.Join(distDir, "index.html")
 	if _, err := os.Stat(index); err != nil {
-		return // фронтенд ще не зібраний — у dev використовується Vite
+		return
 	}
 
-	// Префікси, які обслуговує бекенд і які не можна підміняти на index.html.
-	// /login НЕ входить сюди — це клієнтський маршрут (сторінка входу SPA).
 	apiPrefixes := []string{"/api", "/media", "/raw", "/answers"}
 
 	r.NoRoute(func(c *gin.Context) {
@@ -98,7 +89,6 @@ func serveSPA(r *gin.Engine, distDir string) {
 			}
 		}
 
-		// Якщо це реальний файл усередині dist (asset, favicon тощо) — віддаємо його.
 		clean := filepath.Clean(strings.TrimPrefix(p, "/"))
 		if clean != "." && !strings.HasPrefix(clean, "..") {
 			f := filepath.Join(distDir, clean)
@@ -108,7 +98,6 @@ func serveSPA(r *gin.Engine, distDir string) {
 			}
 		}
 
-		// Інакше — SPA-маршрут, віддаємо index.html.
 		c.File(index)
 	})
 }
