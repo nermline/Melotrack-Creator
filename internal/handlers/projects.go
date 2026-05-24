@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -49,7 +50,7 @@ func GetProjectByID(db *gorm.DB) gin.HandlerFunc {
 			First(&project).Error
 
 		if err != nil {
-			if err == gorm.ErrRecordNotFound {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
 				return
 			}
@@ -113,7 +114,7 @@ func UpdateProject(db *gorm.DB) gin.HandlerFunc {
 		var project models.Project
 
 		if err := db.Where("id = ?", projectID).First(&project).Error; err != nil {
-			if err == gorm.ErrRecordNotFound {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
 				return
 			}

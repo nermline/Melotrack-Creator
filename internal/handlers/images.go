@@ -38,12 +38,11 @@ func UploadAnswerImage(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 		}
 		defer src.Close()
 
-		img, format, err := image.Decode(src)
+		img, _, err := image.Decode(src)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported image format or corrupted file: %v", err)})
 			return
 		}
-		fmt.Printf("Uploaded image format: %s\n", format)
 
 		outDir := filepath.Join(".", "downloads", "answers", projectID, categoryID)
 		if err := os.MkdirAll(outDir, os.ModePerm); err != nil {

@@ -131,3 +131,75 @@ func TestDeleteCategory_NotFound(t *testing.T) {
 	pid, _ := seedProjectCategory(t, db)
 	mustStatus(t, doJSON(r, "DELETE", fmt.Sprintf("/api/projects/%d/categories/999", pid), nil), http.StatusNotFound)
 }
+
+func TestGetCategories_ProjectNotFound(t *testing.T) {
+	r := newTestRouter(newTestDB(t))
+	mustStatus(t, doJSON(r, "GET", "/api/projects/999/categories", nil), http.StatusNotFound)
+}
+
+func TestDeleteCategory_ProjectNotFound(t *testing.T) {
+	r := newTestRouter(newTestDB(t))
+	mustStatus(t, doJSON(r, "DELETE", "/api/projects/999/categories/1", nil), http.StatusNotFound)
+}
+
+func TestUpdateCategory_DuplicateTitle(t *testing.T) {
+	db := newTestDB(t)
+	r := newTestRouter(db)
+	p := decode[models.Project](t, doJSON(r, "POST", "/api/projects", map[string]string{"title": "P"}))
+	base := fmt.Sprintf("/api/projects/%d/categories", p.ID)
+	doJSON(r, "POST", base, map[string]string{"title": "Taken"})
+	c2 := decode[models.Category](t, doJSON(r, "POST", base, map[string]string{"title": "Mine"}))
+	w := doJSON(r, "PUT", fmt.Sprintf("%s/%d", base, c2.ID), map[string]any{"title": "Taken"})
+	mustStatus(t, w, http.StatusConflict)
+}
+
+func TestUpdateCategory_PositionClampedAboveMax(t *testing.T) {
+	db := newTestDB(t)
+	r := newTestRouter(db)
+	p := decode[models.Project](t, doJSON(r, "POST", "/api/projects", map[string]string{"title": "P"}))
+	base := fmt.Sprintf("/api/projects/%d/categories", p.ID)
+	c0 := decode[models.Category](t, doJSON(r, "POST", base, map[string]string{"title": "C0"}))
+	doJSON(r, "POST", base, map[string]string{"title": "C1"})
+
+	w := doJSON(r, "PUT", fmt.Sprintf("%s/%d", base, c0.ID), map[string]any{"position": 999})
+	mustStatus(t, w, http.StatusOK)
+	if got := decode[models.Category](t, w); got.Position != 1 {
+		t.Errorf("position should clamp to 1, got %d", got.Position)
+	}
+}
+
+func TestUpdateCategory_PositionClampedBelowZero(t *testing.T) {
+	db := newTestDB(t)
+	r := newTestRouter(db)
+	p := decode[models.Project](t, doJSON(r, "POST", "/api/projects", map[string]string{"title": "P"}))
+	base := fmt.Sprintf("/api/projects/%d/categories", p.ID)
+	doJSON(r, "POST", base, map[string]string{"title": "C0"})
+	c1 := decode[models.Category](t, doJSON(r, "POST", base, map[string]string{"title": "C1"}))
+
+	w := doJSON(r, "PUT", fmt.Sprintf("%s/%d", base, c1.ID), map[string]any{"position": -10})
+	mustStatus(t, w, http.StatusOK)
+	if got := decode[models.Category](t, w); got.Position != 0 {
+		t.Errorf("position should clamp to 0, got %d", got.Position)
+	}
+}
+
+func TestUpdateCategory_SamePositionIsNoOp(t *testing.T) {
+	db := newTestDB(t)
+	r := newTestRouter(db)
+	p := decode[models.Project](t, doJSON(r, "POST", "/api/projects", map[string]string{"title": "P"}))
+	base := fmt.Sprintf("/api/projects/%d/categories", p.ID)
+	c0 := decode[models.Category](t, doJSON(r, "POST", base, map[string]string{"title": "C0"}))
+	doJSON(r, "POST", base, map[string]string{"title": "C1"})
+
+	w := doJSON(r, "PUT", fmt.Sprintf("%s/%d", base, c0.ID), map[string]any{"position": 0})
+	mustStatus(t, w, http.StatusOK)
+	if got := decode[models.Category](t, w); got.Position != 0 {
+		t.Errorf("same position update should be no-op, got %d", got.Position)
+	}
+}
+
+func TestUpdateCategory_ProjectNotFound(t *testing.T) {
+	r := newTestRouter(newTestDB(t))
+	w := doJSON(r, "PUT", "/api/projects/999/categories/1", map[string]any{"title": "X"})
+	mustStatus(t, w, http.StatusNotFound)
+}

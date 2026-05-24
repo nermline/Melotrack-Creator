@@ -315,6 +315,10 @@ func UpdateQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 				if input.Video.YoutubeURL != nil && updatedItem.Video.YouTubeURL != *input.Video.YoutubeURL {
 					urlChanged = true
 					ytID := media.ExtractYouTubeID(*input.Video.YoutubeURL)
+					if ytID == "" {
+						validationErr = fmt.Errorf("invalid youtube url")
+						return validationErr
+					}
 
 					updatedItem.Video.YouTubeURL = fmt.Sprintf("https://www.youtube.com/watch?v=%s", ytID)
 
@@ -562,7 +566,7 @@ func DeleteQuizItem(db *gorm.DB, hub *ws.Hub) gin.HandlerFunc {
 			oldPos := item.Position
 			catID := item.CategoryID
 
-			if cancelFunc, exists := activeRenderWorkers.Load(item.ID); exists {
+			if cancelFunc, exists := activeRenderWorkers.LoadAndDelete(item.ID); exists {
 				cancelFunc.(context.CancelFunc)()
 			}
 

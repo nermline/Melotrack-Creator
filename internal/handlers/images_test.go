@@ -127,3 +127,51 @@ func TestDeleteQuizItemImage_OK(t *testing.T) {
 		t.Errorf("image_path should be cleared, got %q", answer.ImagePath)
 	}
 }
+
+func TestUploadAnswerImage_ProjectNotFound(t *testing.T) {
+	t.Chdir(t.TempDir())
+	r := newTestRouter(newTestDB(t))
+	w := multipartUpload(t, r, "/api/projects/999/categories/1/items/1/image", "image", "cover.png", pngBytes(t))
+	mustStatus(t, w, http.StatusNotFound)
+}
+
+func TestUploadAnswerImage_WrongFieldName(t *testing.T) {
+	t.Chdir(t.TempDir())
+	db := newTestDB(t)
+	r := newTestRouter(db)
+	pid, cid := seedProjectCategory(t, db)
+	db.Create(&models.Media{YouTubeID: sampleYtID, Status: "ready", FilePath: "raw.mp4"})
+	item := decode[models.QuizItem](t, doJSON(r, "POST", itemsURL(pid, cid), createItemBody("Song")))
+
+	url := fmt.Sprintf("%s/%d/image", itemsURL(pid, cid), item.ID)
+	// field name "file" instead of required "image"
+	w := multipartUpload(t, r, url, "file", "cover.png", pngBytes(t))
+	mustStatus(t, w, http.StatusBadRequest)
+}
+
+func TestDeleteQuizItemImage_CategoryNotFound(t *testing.T) {
+	t.Chdir(t.TempDir())
+	db := newTestDB(t)
+	r := newTestRouter(db)
+	pid, _ := seedProjectCategory(t, db)
+	url := fmt.Sprintf("/api/projects/%d/categories/999/items/1/image", pid)
+	mustStatus(t, doJSON(r, "DELETE", url, nil), http.StatusNotFound)
+}
+
+func TestDeleteQuizItemImage_NoImageIsNoOp(t *testing.T) {
+	t.Chdir(t.TempDir())
+	db := newTestDB(t)
+	r := newTestRouter(db)
+	pid, cid := seedProjectCategory(t, db)
+	db.Create(&models.Media{YouTubeID: sampleYtID, Status: "ready", FilePath: "raw.mp4"})
+	item := decode[models.QuizItem](t, doJSON(r, "POST", itemsURL(pid, cid), createItemBody("Song")))
+
+	url := fmt.Sprintf("%s/%d/image", itemsURL(pid, cid), item.ID)
+	mustStatus(t, doJSON(r, "DELETE", url, nil), http.StatusOK)
+
+	var answer models.Answer
+	db.Where("quiz_item_id = ?", item.ID).First(&answer)
+	if answer.ImagePath != "" {
+		t.Errorf("image_path should remain empty, got %q", answer.ImagePath)
+	}
+}
