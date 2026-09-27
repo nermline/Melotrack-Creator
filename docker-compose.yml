@@ -6,9 +6,16 @@ services:
     env_file: .env
     ports:
       - "${PORT:-8080}:8080"
+    # Paths inside the container are fixed here so a local-development .env
+    # (e.g. DATABASE=./database.sql) cannot point them outside the volume.
     environment:
       PORT: "8080"
+      HOST: 0.0.0.0
       DATA_DIR: /data
+      DATABASE: /data/melotrack.db
+      # Drop an old ./downloads folder into ./data/downloads to import it once.
+      LEGACY_DOWNLOADS_DIR: /data/downloads
+      STATIC_DIR: /app/web
     volumes:
       # Database and all media live here — back this folder up.
       - ./data:/data
