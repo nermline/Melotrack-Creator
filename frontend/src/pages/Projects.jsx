@@ -1,168 +1,216 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import api from '../api';
-import { Glass, Button, TextInput, Spinner } from '../ui/kit';
+import { motion } from 'framer-motion';
+import { CopyPlus, Disc3, ListMusic, Plus, Trash2, Users } from 'lucide-react';
+import { api } from '../lib/api';
+import { categories, fmtDate, songs, teams } from '../lib/format';
+import { Button, Empty, Modal, Spinner } from '../ui';
+import { useFeedback } from '../ui/feedbackContext';
+import TopBar from '../ui/TopBar';
+import { THEMES } from '../show/themes';
 
-const pageVariants = {
-    initial: { opacity: 0, y: 18 },
-    animate: { opacity: 1, y: 0, transition: { duration: 0.22, ease: [0.22, 0.61, 0.36, 1] } },
-    exit:    { opacity: 0, y: -10, transition: { duration: 0.16, ease: 'easeIn' } },
-};
+function TitleDialog({ open, title, initial = '', submitLabel, onClose, onSubmit }) {
+    return (
+        <Modal open={open} onClose={onClose} title={title} width={460}>
+            <TitleForm initial={initial} submitLabel={submitLabel} onClose={onClose} onSubmit={onSubmit} />
+        </Modal>
+    );
+}
+
+function TitleForm({ initial, submitLabel, onClose, onSubmit }) {
+    const [value, setValue] = useState(initial);
+    const [error, setError] = useState('');
+    const [busy, setBusy] = useState(false);
+
+    const submit = async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setError('');
+        try {
+            await onSubmit(value.trim());
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setBusy(false);
+        }
+    };
+    return (
+        <form onSubmit={submit}>
+                <label className="label" htmlFor="ptitle">
+                    Назва
+                </label>
+                <input
+                    id="ptitle"
+                    className="field"
+                    autoFocus
+                    maxLength={120}
+                    placeholder="Мелотрек 27 вересня"
+                    value={value}
+                    onChange={(e) => setValue(e.target.value)}
+                />
+                {error && <p className="mt-2 mb-0 text-sm text-bad">{error}</p>}
+                <div className="mt-5 flex justify-end gap-2">
+                    <Button variant="ghost" onClick={onClose}>
+                        Скасувати
+                    </Button>
+                    <Button type="submit" variant="primary" loading={busy} disabled={!value.trim()}>
+                        {submitLabel}
+                    </Button>
+                </div>
+        </form>
+    );
+}
 
 export default function Projects() {
-    const [projects, setProjects] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const [list, setList] = useState(null);
     const [error, setError] = useState('');
-
-    const [isCreating, setIsCreating] = useState(false);
-    const [newTitle, setNewTitle] = useState('');
-    const [createError, setCreateError] = useState('');
-
-    const [editingId, setEditingId] = useState(null);
-    const [editTitle, setEditTitle] = useState('');
-
+    const [creating, setCreating] = useState(false);
+    const [duplicating, setDuplicating] = useState(null);
     const navigate = useNavigate();
-    const role = localStorage.getItem('role') || '';
-    const canEdit = role === 'admin' || role === 'editor';
+    const { confirm, toast } = useFeedback();
 
+    const load = () =>
+        api
+            .get('/api/projects')
+            .then(setList)
+            .catch((e) => setError(e.message));
     useEffect(() => {
-        api.get('/api/projects')
-            .then((r) => setProjects(r.data || []))
-            .catch(() => setError('Помилка завантаження проєктів'))
-            .finally(() => setLoading(false));
+        load();
     }, []);
 
-    const handleLogout = async () => {
-        try { await api.post('/api/logout'); } catch {}
-        localStorage.removeItem('token'); localStorage.removeItem('role');
-        navigate('/login');
+    const create = async (title) => {
+        const p = await api.post('/api/projects', { title });
+        navigate(`/p/${p.id}`);
     };
 
-    const handleCreate = async (e) => {
-        e.preventDefault(); setCreateError('');
+    const duplicate = async (title) => {
+        const p = await api.post(`/api/projects/${duplicating.id}/duplicate`, { title });
+        setDuplicating(null);
+        toast('Копію створено — пісні та кліпи вже на місці');
+        navigate(`/p/${p.id}`);
+    };
+
+    const remove = async (p) => {
+        const ok = await confirm({
+            title: 'Видалити мелотрек?',
+            message: `«${p.title}» буде видалено разом з категоріями, піснями, командами та балами. Це не можна скасувати.`,
+            confirmLabel: 'Видалити',
+            danger: true,
+        });
+        if (!ok) return;
         try {
-            const r = await api.post('/api/projects', { title: newTitle });
-            setProjects((prev) => [r.data, ...prev]);
-            setNewTitle(''); setIsCreating(false);
-        } catch (err) {
-            const msg = err.response?.data?.error;
-            setCreateError(msg === 'title is already taken' ? 'Назва вже зайнята' : 'Не вдалося створити');
+            await api.del(`/api/projects/${p.id}`);
+            setList((l) => l.filter((x) => x.id !== p.id));
+        } catch (e) {
+            toast(e.message, 'bad');
         }
     };
 
-    const handleEdit = async (e, id) => {
-        e.preventDefault();
-        try {
-            const r = await api.put(`/api/projects/${id}`, { title: editTitle });
-            setProjects((prev) => prev.map((p) => p.id === id ? { ...p, title: r.data.title } : p));
-            setEditingId(null);
-        } catch { alert('Не вдалося оновити'); }
-    };
-
-    const handleDelete = async (id) => {
-        if (!confirm('Видалити проєкт разом з усіма категоріями та медіа?')) return;
-        try {
-            await api.delete(`/api/projects/${id}`);
-            setProjects((prev) => prev.filter((p) => p.id !== id));
-        } catch { alert('Не вдалося видалити проєкт'); }
-    };
-
     return (
-        <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit">
-            <div className="mx-auto max-w-5xl px-4 py-6">
-                <div className="flex items-center justify-between gap-2 flex-wrap mb-5">
-                    <h1 className="text-2xl sm:text-3xl font-bold m-0" style={{ color: '#fff' }}>Проєкти</h1>
-                    <div className="flex items-center gap-2">
-                        <span className="text-xs px-2 py-1 rounded-full"
-                            style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--color-muted)' }}>
-                            {role || 'гість'}
-                        </span>
-                        <Button variant="ghost" size="sm" onClick={handleLogout}>Вийти</Button>
+        <>
+            <TopBar />
+            <main className="mx-auto max-w-[1100px] px-4 py-8">
+                <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                        <div className="eyebrow">Усі події</div>
+                        <h1 className="m-0 mt-1 font-display text-2xl font-bold sm:text-3xl">Мелотреки</h1>
                     </div>
+                    <Button variant="primary" icon={Plus} onClick={() => setCreating(true)}>
+                        Новий мелотрек
+                    </Button>
                 </div>
 
-                {error && <p style={{ color: 'var(--color-danger)' }}>{error}</p>}
-
-                {canEdit && (isCreating ? (
-                    <Glass className="p-4 mb-4">
-                        <form onSubmit={handleCreate} className="flex gap-2 items-center flex-wrap">
-                            <TextInput autoFocus value={newTitle} onChange={(e) => setNewTitle(e.target.value)}
-                                placeholder="Назва проєкту" required className="flex-1 min-w-0" />
-                            <Button type="submit" variant="primary">Зберегти</Button>
-                            <Button type="button" variant="ghost" onClick={() => setIsCreating(false)}>Скасувати</Button>
-                        </form>
-                        {createError && <p className="mt-2 text-sm" style={{ color: 'var(--color-danger)' }}>{createError}</p>}
-                    </Glass>
-                ) : (
-                    <Button variant="primary" className="mb-4"
-                        onClick={() => { setIsCreating(true); setCreateError(''); }}>
-                        + Новий проєкт
-                    </Button>
-                ))}
-
-                {loading ? (
-                    <div className="py-4"><Spinner /> <span className="ml-2">Завантаження…</span></div>
-                ) : projects.length === 0 ? (
-                    <p style={{ color: 'var(--color-muted)' }}>Проєктів ще немає.</p>
-                ) : (
-                    <div className="grid gap-3">
-                        <AnimatePresence initial={false}>
-                            {projects.map((proj) => {
-                                const isEditing = editingId === proj.id;
-                                return (
-                                    <motion.div
-                                        key={proj.id}
-                                        layout
-                                        initial={{ opacity: 0, y: 8 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        exit={{ opacity: 0, scale: 0.97 }}
-                                        whileHover={!isEditing ? { y: -2, transition: { duration: 0.13 } } : undefined}
-                                        onClick={!isEditing ? () => navigate(`/projects/${proj.id}`) : undefined}
-                                        style={!isEditing ? { cursor: 'pointer' } : undefined}
-                                    >
-                                        <Glass className="p-4 flex items-center gap-3">
-                                            {isEditing ? (
-                                                <form onSubmit={(e) => handleEdit(e, proj.id)}
-                                                    className="flex gap-2 items-center flex-1">
-                                                    <TextInput autoFocus value={editTitle}
-                                                        onChange={(e) => setEditTitle(e.target.value)} required />
-                                                    <Button type="submit" size="sm" variant="primary">OK</Button>
-                                                    <Button type="button" size="sm" variant="ghost"
-                                                        onClick={() => setEditingId(null)}>✕</Button>
-                                                </form>
-                                            ) : (
-                                                <>
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="font-semibold truncate" style={{ color: '#fff' }}>
-                                                            {proj.title}
-                                                        </div>
-                                                        <div className="text-xs" style={{ color: 'var(--color-muted)' }}>
-                                                            {new Date(proj.created_at).toLocaleDateString()}
-                                                        </div>
-                                                    </div>
-                                                    {canEdit && (
-                                                        <Button size="sm" variant="ghost"
-                                                            onClick={(e) => { e.stopPropagation(); setEditingId(proj.id); setEditTitle(proj.title); }}>
-                                                            ✎
-                                                        </Button>
-                                                    )}
-                                                    {canEdit && (
-                                                        <Button size="sm" variant="danger"
-                                                            onClick={(e) => { e.stopPropagation(); handleDelete(proj.id); }}>
-                                                            🗑
-                                                        </Button>
-                                                    )}
-                                                </>
-                                            )}
-                                        </Glass>
-                                    </motion.div>
-                                );
-                            })}
-                        </AnimatePresence>
+                {error && <p className="text-bad">{error}</p>}
+                {!list && !error && (
+                    <div className="py-10 text-center text-dim">
+                        <Spinner />
                     </div>
                 )}
-            </div>
-        </motion.div>
+                {list && list.length === 0 && (
+                    <div className="panel">
+                        <Empty
+                            icon={Disc3}
+                            title="Ще жодного мелотреку"
+                            action={
+                                <Button variant="primary" icon={Plus} onClick={() => setCreating(true)}>
+                                    Створити перший
+                                </Button>
+                            }
+                        >
+                            Створіть мелотрек, додайте категорії й пісні з YouTube — програма сама завантажить і
+                            підготує фрагменти.
+                        </Empty>
+                    </div>
+                )}
+                {list && list.length > 0 && (
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {list.map((p, i) => {
+                            const theme = THEMES[p.theme] || THEMES.neon;
+                            return (
+                                <motion.div
+                                    key={p.id}
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: i * 0.03 }}
+                                    className="panel group relative cursor-pointer overflow-hidden p-5 transition-colors hover:border-line-strong"
+                                    onClick={() => navigate(`/p/${p.id}`)}
+                                >
+                                    <div
+                                        className="absolute inset-x-0 top-0 h-1"
+                                        style={{ background: theme.swatch }}
+                                        aria-hidden="true"
+                                    />
+                                    <div className="text-xs text-faint">{fmtDate(p.created_at)}</div>
+                                    <div className="mt-1 mb-4 line-clamp-2 text-lg font-bold">{p.title}</div>
+                                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-dim">
+                                        <span className="inline-flex items-center gap-1.5">
+                                            <ListMusic size={14} /> {categories(p.categories)}, {songs(p.items)}
+                                        </span>
+                                        <span className="inline-flex items-center gap-1.5">
+                                            <Users size={14} /> {teams(p.teams)}
+                                        </span>
+                                    </div>
+                                    <div
+                                        className="absolute top-3 right-3 flex gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
+                                        onClick={(e) => e.stopPropagation()}
+                                    >
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            icon={CopyPlus}
+                                            title="Створити копію як шаблон"
+                                            onClick={() => setDuplicating(p)}
+                                        />
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            icon={Trash2}
+                                            title="Видалити"
+                                            onClick={() => remove(p)}
+                                        />
+                                    </div>
+                                </motion.div>
+                            );
+                        })}
+                    </div>
+                )}
+            </main>
+
+            <TitleDialog
+                open={creating}
+                title="Новий мелотрек"
+                submitLabel="Створити"
+                onClose={() => setCreating(false)}
+                onSubmit={create}
+            />
+            <TitleDialog
+                open={!!duplicating}
+                title="Копія мелотреку"
+                initial={duplicating ? `${duplicating.title} (копія)` : ''}
+                submitLabel="Створити копію"
+                onClose={() => setDuplicating(null)}
+                onSubmit={duplicate}
+            />
+        </>
     );
 }

@@ -1,0 +1,449 @@
+/* The presentation. Everything is sized in container units (cq*) so the same
+   markup works fullscreen, in the rehearsal box and in the theme thumbnails. */
+
+.stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  container-type: size;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--body);
+  isolation: isolate;
+  user-select: none;
+}
+
+.stage[data-theme="neon"],
+.themed[data-theme="neon"] {
+  --bg: #0a0420;
+  --ink: #ffffff;
+  --dim: #b9aee6;
+  --a1: #ff2bd6;
+  --a2: #22e4ff;
+  --a3: #7b5cff;
+  --card: rgb(255 255 255 / 0.06);
+  --card-line: rgb(255 255 255 / 0.16);
+  --display: "Unbounded Variable", sans-serif;
+  --body: "Manrope Variable", sans-serif;
+  --title-style: normal;
+  --title-case: none;
+  --title-weight: 800;
+  --title-spacing: -0.02em;
+  --glow: 0 0 2cqmin rgb(255 43 214 / 0.55), 0 0 6cqmin rgb(123 92 255 / 0.35);
+}
+
+.stage[data-theme="vinyl"],
+.themed[data-theme="vinyl"] {
+  --bg: #1b120c;
+  --ink: #f6ead2;
+  --dim: #cdb48d;
+  --a1: #f28c28;
+  --a2: #e7bb45;
+  --a3: #b5462b;
+  --card: rgb(246 234 210 / 0.06);
+  --card-line: rgb(246 234 210 / 0.16);
+  --display: "Playfair Display Variable", Georgia, serif;
+  --body: "Manrope Variable", sans-serif;
+  --title-style: italic;
+  --title-case: none;
+  --title-weight: 700;
+  --title-spacing: -0.01em;
+  --glow: 0 0.4cqmin 3cqmin rgb(0 0 0 / 0.5);
+}
+
+.stage[data-theme="stage"],
+.themed[data-theme="stage"] {
+  --bg: #050505;
+  --ink: #ffffff;
+  --dim: #a8a08c;
+  --a1: #f5c542;
+  --a2: #fff1b8;
+  --a3: #e2572d;
+  --card: rgb(255 255 255 / 0.05);
+  --card-line: rgb(245 197 66 / 0.25);
+  --display: "Oswald Variable", "Arial Narrow", sans-serif;
+  --body: "Manrope Variable", sans-serif;
+  --title-style: normal;
+  --title-case: uppercase;
+  --title-weight: 700;
+  --title-spacing: 0.01em;
+  --glow: 0 0 4cqmin rgb(245 197 66 / 0.35);
+}
+
+.stage .layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 6cqmin 7cqw;
+  z-index: 2;
+}
+
+.themed {
+  container-type: size;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--body);
+}
+
+.stage .display,
+.themed .display {
+  font-family: var(--display);
+  font-style: var(--title-style);
+  text-transform: var(--title-case);
+  font-weight: var(--title-weight);
+  letter-spacing: var(--title-spacing);
+  line-height: 1.05;
+  text-wrap: balance;
+}
+
+.stage .title-xl {
+  font-size: clamp(20px, 11cqmin, 200px);
+  text-shadow: var(--glow);
+}
+.stage .title-l {
+  font-size: clamp(18px, 8cqmin, 150px);
+  text-shadow: var(--glow);
+}
+.stage .title-m {
+  font-size: clamp(14px, 5.2cqmin, 90px);
+}
+.stage .eyebrow-s {
+  font-family: var(--body);
+  font-size: clamp(9px, 2.4cqmin, 36px);
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--a2);
+}
+.stage .sub {
+  font-size: clamp(10px, 2.8cqmin, 44px);
+  color: var(--dim);
+}
+.stage .card {
+  background: var(--card);
+  border: 1px solid var(--card-line);
+  border-radius: 2cqmin;
+  backdrop-filter: blur(6px);
+}
+.stage .pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.9cqmin 2.2cqmin;
+  border-radius: 99cqmin;
+  font-size: clamp(9px, 2.3cqmin, 34px);
+  font-weight: 700;
+  background: var(--card);
+  border: 1px solid var(--card-line);
+}
+.stage .accent-bar {
+  height: 0.9cqmin;
+  width: 22cqmin;
+  border-radius: 1cqmin;
+  background: linear-gradient(90deg, var(--a1), var(--a2));
+}
+
+/* ---------- backdrops ---------- */
+
+.stage .backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* Neon: synthwave sky, sun and a grid floor rushing towards you. */
+.bd-neon {
+  background:
+    radial-gradient(120cqw 60cqh at 50% 100%, rgb(255 43 214 / 0.35), transparent 60%),
+    linear-gradient(180deg, #0a0420 0%, #1a0838 55%, #3a0b4d 70%, #0a0420 71%);
+}
+.bd-neon .sun {
+  position: absolute;
+  left: 50%;
+  top: 70%;
+  width: 46cqmin;
+  height: 46cqmin;
+  transform: translate(-50%, -62%);
+  border-radius: 50%;
+  background: linear-gradient(180deg, #ffe66d 0%, #ff8a3d 40%, #ff2bd6 80%);
+  box-shadow: 0 0 12cqmin rgb(255 43 214 / 0.5);
+  mask: linear-gradient(180deg, #000 45%, transparent 45%), repeating-linear-gradient(180deg, #000 0 2.6cqmin, transparent 2.6cqmin 3.8cqmin);
+  mask-composite: add;
+  opacity: 0.85;
+}
+.bd-neon .floor {
+  position: absolute;
+  left: -50%;
+  right: -50%;
+  top: 70%;
+  height: 80%;
+  transform-origin: top;
+  transform: perspective(40cqh) rotateX(62deg);
+  background-image:
+    linear-gradient(rgb(34 228 255 / 0.7) 0.3cqmin, transparent 0.3cqmin),
+    linear-gradient(90deg, rgb(255 43 214 / 0.7) 0.3cqmin, transparent 0.3cqmin);
+  background-size: 8cqmin 8cqmin;
+  animation: neon-floor 1.6s linear infinite;
+  mask: linear-gradient(180deg, transparent, #000 35%);
+}
+@keyframes neon-floor {
+  to {
+    background-position: 0 8cqmin;
+  }
+}
+.bd-neon .stars {
+  position: absolute;
+  inset: 0 0 35% 0;
+  background-image:
+    radial-gradient(0.25cqmin 0.25cqmin at 12% 18%, #fff, transparent),
+    radial-gradient(0.2cqmin 0.2cqmin at 31% 42%, #fff, transparent),
+    radial-gradient(0.3cqmin 0.3cqmin at 58% 12%, #fff, transparent),
+    radial-gradient(0.2cqmin 0.2cqmin at 77% 33%, #fff, transparent),
+    radial-gradient(0.25cqmin 0.25cqmin at 88% 9%, #fff, transparent),
+    radial-gradient(0.2cqmin 0.2cqmin at 44% 26%, #fff, transparent),
+    radial-gradient(0.2cqmin 0.2cqmin at 5% 48%, #fff, transparent),
+    radial-gradient(0.25cqmin 0.25cqmin at 94% 52%, #fff, transparent);
+  opacity: 0.7;
+  animation: twinkle 4s ease-in-out infinite alternate;
+}
+@keyframes twinkle {
+  to {
+    opacity: 0.3;
+  }
+}
+.bd-neon.dim .sun,
+.bd-neon.dim .floor {
+  opacity: 0.35;
+}
+
+/* Vinyl: warm lounge light, paper grain and a record spinning in the corner. */
+.bd-vinyl {
+  background:
+    radial-gradient(90cqw 80cqh at 20% 10%, rgb(242 140 40 / 0.22), transparent 60%),
+    radial-gradient(80cqw 70cqh at 100% 100%, rgb(181 70 43 / 0.25), transparent 60%),
+    #1b120c;
+}
+.bd-vinyl::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.18;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.bd-vinyl .record {
+  position: absolute;
+  right: -22cqmin;
+  bottom: -22cqmin;
+  width: 70cqmin;
+  height: 70cqmin;
+  opacity: 0.35;
+  animation: spin-slow 12s linear infinite;
+}
+.bd-vinyl.dim .record {
+  opacity: 0.15;
+}
+@keyframes spin-slow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Stage: black stage, swaying spotlights and haze. */
+.bd-stage {
+  background:
+    radial-gradient(100cqw 40cqh at 50% 110%, rgb(245 197 66 / 0.18), transparent 70%),
+    #050505;
+}
+.bd-stage .beam {
+  position: absolute;
+  top: -10%;
+  width: 34cqw;
+  height: 140%;
+  transform-origin: 50% 0;
+  background: linear-gradient(180deg, rgb(255 241 184 / 0.28), rgb(255 241 184 / 0.02) 75%, transparent);
+  clip-path: polygon(45% 0, 55% 0, 100% 100%, 0 100%);
+  filter: blur(1.2cqmin);
+  mix-blend-mode: screen;
+}
+.bd-stage .beam.b1 {
+  left: 2%;
+  animation: sway 7s ease-in-out infinite alternate;
+}
+.bd-stage .beam.b2 {
+  left: 33%;
+  animation: sway 9s ease-in-out -2s infinite alternate-reverse;
+  background: linear-gradient(180deg, rgb(245 197 66 / 0.3), transparent 75%);
+}
+.bd-stage .beam.b3 {
+  left: 64%;
+  animation: sway 8s ease-in-out -4s infinite alternate;
+}
+@keyframes sway {
+  from {
+    transform: rotate(-14deg);
+  }
+  to {
+    transform: rotate(14deg);
+  }
+}
+.bd-stage .haze {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 30%;
+  background: linear-gradient(0deg, rgb(255 255 255 / 0.06), transparent);
+}
+.bd-stage.dim .beam {
+  opacity: 0.45;
+}
+
+/* ---------- visuals ---------- */
+
+.stage .eq {
+  display: flex;
+  align-items: flex-end;
+  gap: 1.4cqmin;
+  height: 30cqmin;
+}
+.stage .eq span {
+  width: 3.2cqmin;
+  border-radius: 1cqmin;
+  background: linear-gradient(0deg, var(--a1), var(--a2));
+  box-shadow: 0 0 2.5cqmin color-mix(in srgb, var(--a1) 60%, transparent);
+  animation: eq 0.9s ease-in-out infinite alternate;
+  height: 20%;
+}
+.stage .eq.paused span {
+  animation-play-state: paused;
+}
+@keyframes eq {
+  0% {
+    height: 18%;
+  }
+  40% {
+    height: 95%;
+  }
+  70% {
+    height: 45%;
+  }
+  100% {
+    height: 75%;
+  }
+}
+
+.stage .vinyl-disc {
+  width: 48cqmin;
+  height: 48cqmin;
+  animation: spin-slow 1.8s linear infinite;
+}
+.stage .vinyl-disc.paused {
+  animation-play-state: paused;
+}
+
+.stage .rings {
+  position: relative;
+  width: 44cqmin;
+  height: 44cqmin;
+  display: grid;
+  place-items: center;
+}
+.stage .rings i {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 0.5cqmin solid var(--a1);
+  animation: ring 2.4s ease-out infinite;
+  opacity: 0;
+}
+.stage .rings i:nth-child(2) {
+  animation-delay: 0.8s;
+}
+.stage .rings i:nth-child(3) {
+  animation-delay: 1.6s;
+}
+.stage .rings.paused i {
+  animation-play-state: paused;
+}
+@keyframes ring {
+  0% {
+    transform: scale(0.35);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.25);
+    opacity: 0;
+  }
+}
+
+.stage .progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1.2cqmin;
+  background: rgb(255 255 255 / 0.1);
+  z-index: 6;
+}
+.stage .progress > div {
+  height: 100%;
+  background: linear-gradient(90deg, var(--a1), var(--a2));
+}
+
+.stage .clips {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: #000;
+  opacity: 0;
+  transition: opacity 0.35s;
+  pointer-events: none;
+}
+.stage .clips.visible {
+  opacity: 1;
+}
+.stage .clips video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0;
+}
+.stage .clips video.active {
+  opacity: 1;
+}
+
+.stage .corner {
+  position: absolute;
+  z-index: 7;
+  font-size: clamp(8px, 1.9cqmin, 28px);
+  font-weight: 700;
+  color: var(--dim);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.stage .dots::after {
+  content: "";
+  animation: dots 1.4s steps(4) infinite;
+}
+@keyframes dots {
+  0% {
+    content: "";
+  }
+  25% {
+    content: ".";
+  }
+  50% {
+    content: "..";
+  }
+  75% {
+    content: "...";
+  }
+}

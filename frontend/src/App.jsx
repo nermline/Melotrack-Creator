@@ -1,43 +1,74 @@
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { AnimatePresence } from 'framer-motion';
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { api, setUnauthorizedHandler } from './lib/api';
+import { FeedbackProvider } from './ui/feedback';
+import { Spinner } from './ui';
 import Login from './pages/Login';
 import Projects from './pages/Projects';
-import ProjectDetail from './pages/ProjectDetail';
-import CategoryDetail from './pages/CategoryDetail';
-import PlayLauncher from './pages/PlayLauncher';
-import ScreenView from './pages/ScreenView';
-import RemoteView from './pages/RemoteView';
-import PresentView from './pages/PresentView';
+import ProjectPage from './project/ProjectPage';
 
-function ProtectedRoute({ children }) {
-    const token = localStorage.getItem('token');
-    if (!token) return <Navigate to="/login" replace />;
-    return children;
+// The show pages pull in the presentation themes and fonts; load them on demand.
+const Screen = lazy(() => import('./pages/Screen'));
+const Remote = lazy(() => import('./pages/Remote'));
+const Preview = lazy(() => import('./pages/Preview'));
+const Join = lazy(() => import('./pages/Join'));
+
+function Loading() {
+    return (
+        <div className="grid min-h-screen place-items-center text-dim">
+            <Spinner size={22} />
+        </div>
+    );
 }
 
-function AnimatedRoutes() {
+// Private checks the session once and redirects to the login page when needed.
+function Private({ children }) {
+    const [state, setState] = useState('checking');
     const location = useLocation();
-    return (
-        <AnimatePresence mode="wait">
-            <Routes location={location} key={location.pathname}>
-                <Route path="/login" element={<Login />} />
-                <Route path="/" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
-                <Route path="/projects/:pid" element={<ProtectedRoute><ProjectDetail /></ProtectedRoute>} />
-                <Route path="/projects/:pid/categories/:cid" element={<ProtectedRoute><CategoryDetail /></ProtectedRoute>} />
-                <Route path="/projects/:pid/play" element={<ProtectedRoute><PlayLauncher /></ProtectedRoute>} />
-                <Route path="/projects/:pid/screen" element={<ProtectedRoute><ScreenView /></ProtectedRoute>} />
-                <Route path="/projects/:pid/remote" element={<ProtectedRoute><RemoteView /></ProtectedRoute>} />
-                <Route path="/projects/:pid/present" element={<ProtectedRoute><PresentView /></ProtectedRoute>} />
-                <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-        </AnimatePresence>
-    );
+    const navigate = useNavigate();
+
+    useEffect(() => {
+        setUnauthorizedHandler(() => {
+            const next = location.pathname + location.search;
+            navigate(`/login?next=${encodeURIComponent(next)}`, { replace: true });
+        });
+    }, [location, navigate]);
+
+    useEffect(() => {
+        let alive = true;
+        api.get('/api/session')
+            .then(() => alive && setState('ok'))
+            .catch(() => alive && setState('out'));
+        return () => {
+            alive = false;
+        };
+    }, []);
+
+    if (state === 'checking') return <Loading />;
+    if (state === 'out') {
+        const next = location.pathname + location.search;
+        return <Navigate to={`/login?next=${encodeURIComponent(next)}`} replace />;
+    }
+    return children;
 }
 
 export default function App() {
     return (
-        <Router>
-            <AnimatedRoutes />
-        </Router>
+        <BrowserRouter>
+            <FeedbackProvider>
+                <Suspense fallback={<Loading />}>
+                    <Routes>
+                        <Route path="/login" element={<Login />} />
+                        <Route path="/join/:code" element={<Join />} />
+                        <Route path="/" element={<Private><Projects /></Private>} />
+                        <Route path="/p/:pid/screen" element={<Private><Screen /></Private>} />
+                        <Route path="/p/:pid/remote" element={<Private><Remote /></Private>} />
+                        <Route path="/p/:pid/preview" element={<Private><Preview /></Private>} />
+                        <Route path="/p/:pid/:tab?" element={<Private><ProjectPage /></Private>} />
+                        <Route path="*" element={<Navigate to="/" replace />} />
+                    </Routes>
+                </Suspense>
+            </FeedbackProvider>
+        </BrowserRouter>
     );
 }
