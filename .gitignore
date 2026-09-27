@@ -1,4 +1,17 @@
-database.sql
 .env
+.DS_Store
+.claude/
+
+# runtime data
+data/
 downloads/
-.claude
+*.db
+*.db-shm
+*.db-wal
+*.bak
+database.sql
+cookies.txt
+
+# frontend build
+frontend/dist/
+frontend/node_modules/

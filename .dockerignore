@@ -1,0 +1,14 @@
+.git
+.github
+.claude
+**/.DS_Store
+**/node_modules
+frontend/dist
+data
+downloads
+*.db
+*.db-*
+*.sql
+*.bak
+.env
+cookies.txt

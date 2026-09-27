@@ -1,0 +1,27 @@
+services:
+  melotrack:
+    build: .
+    image: melotrack:latest
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      PORT: "8080"
+      DATA_DIR: /data
+    volumes:
+      # Database and all media live here — back this folder up.
+      - ./data:/data
+    # Lets the container reach services on the host (e.g. an SSH SOCKS tunnel,
+    # see README → "YouTube на VPS").
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Optional PO-token provider that helps yt-dlp pass YouTube's bot checks.
+  # Start with:  docker compose --profile pot up -d
+  # and set in .env:  YTDLP_POT_PROVIDER=true
+  #                   YTDLP_EXTRA_ARGS=--extractor-args youtubepot-bgutilhttp:base_url=http://pot-provider:4416
+  pot-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider
+    restart: unless-stopped
+    profiles: ["pot"]
