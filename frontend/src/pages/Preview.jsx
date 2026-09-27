@@ -22,7 +22,7 @@ export default function Preview() {
                     </Link>
                     <div>
                         <div className="font-display font-bold">Репетиція</div>
-                        <div className="text-xs text-dim">Той самий показ, що й на екрані — команди з пульта бачать усі пристрої</div>
+                        <div className="text-xs text-dim">Той самий показ, що й на екрані</div>
                     </div>
                 </div>
                 <LiveDot status={status} />

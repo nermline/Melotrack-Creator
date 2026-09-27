@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, CircleAlert, ExternalLink, Eye, Gamepad2, Monitor, Server, Smartphone, TriangleAlert } from 'lucide-react';
+import { Check, CircleAlert, ExternalLink, Eye, Gamepad2, Monitor, Smartphone, TriangleAlert } from 'lucide-react';
 import { api } from '../lib/api';
-import { songs, teams } from '../lib/format';
+import { categories, songs, teams } from '../lib/format';
 import { QR } from '../ui';
 import { cx } from '../lib/cx';
 import { useFeedback } from '../ui/feedbackContext';
@@ -44,8 +44,12 @@ export default function ShowTab({ store }) {
     const [thinkDraft, setThink] = useState(null);
     const think = thinkDraft ?? project.think_seconds;
 
+    // The queue changes as songs are added elsewhere, so keep it fresh.
     useEffect(() => {
-        api.get('/api/system').then(setSystem).catch(() => {});
+        const load = () => api.get('/api/system').then(setSystem).catch(() => {});
+        load();
+        const id = setInterval(load, 5000);
+        return () => clearInterval(id);
     }, []);
 
     const patch = async (body) => {
@@ -74,7 +78,7 @@ export default function ShowTab({ store }) {
     const devices = [
         { href: `${base}/screen`, icon: Monitor, title: 'Екран', text: 'Відкрийте на компʼютері, підключеному до проєктора, і розгорніть на весь екран.' },
         { href: `${base}/remote`, icon: Smartphone, title: 'Пульт', text: 'Керування показом з телефона. Відскануйте QR і увійдіть тим самим паролем.', qr: true },
-        { href: `${base}/preview`, icon: Eye, title: 'Репетиція', text: 'Екран і пульт на одній сторінці — щоб прогнати показ заздалегідь.' },
+        { href: `${base}/preview`, icon: Eye, title: 'Репетиція', text: 'Екран і пульт на одній сторінці.' },
     ];
 
     return (
@@ -145,10 +149,6 @@ export default function ShowTab({ store }) {
                         />
                         <span className="w-12 font-mono font-bold">{think} с</span>
                     </label>
-                    <p className="mt-2 mb-0 text-xs text-faint">
-                        Далі все автоматично: назва категорії → відлік 3-2-1 → пісня → роздуми → наступна пісня… Після
-                        останньої пісні показ чекає на ведучого.
-                    </p>
                 </section>
             </div>
 
@@ -159,7 +159,7 @@ export default function ShowTab({ store }) {
                     </div>
                     <ul className="m-0 list-none p-0">
                         <Check2 ok={project.categories.length > 0 && checks.emptyCats === 0} warn={checks.emptyCats > 0}>
-                            {project.categories.length} категорій
+                            {categories(project.categories.length)}
                             {checks.emptyCats > 0 && `, з них порожніх: ${checks.emptyCats}`}
                         </Check2>
                         <Check2 ok={checks.items > 0 && checks.broken === 0 && checks.busy === 0} warn={checks.busy > 0 && checks.broken === 0}>
@@ -178,30 +178,10 @@ export default function ShowTab({ store }) {
                             {project.teams.length > 0 ? `Зареєстровано ${teams(project.teams.length)}` : 'Команд ще немає (можна зареєструвати на місці)'}
                         </Check2>
                     </ul>
-                </section>
-
-                <section className="panel p-5 text-sm">
-                    <div className="mb-2 flex items-center gap-2 font-bold">
-                        <Server size={18} /> Сервер
-                    </div>
-                    {!system ? (
-                        <span className="text-faint">…</span>
-                    ) : (
-                        <ul className="m-0 list-none p-0">
-                            <Check2 ok={system.ytdlp_age_days >= 0 && system.ytdlp_age_days < 45} warn={system.ytdlp_age_days >= 45}>
-                                yt-dlp {system.ytdlp_version}
-                                {system.ytdlp_age_days >= 45 &&
-                                    ` — застарів (${system.ytdlp_age_days} дн.). YouTube часто ламає старі версії: оновіть або перезапустіть контейнер.`}
-                            </Check2>
-                            <Check2 ok={system.proxy || system.cookies} warn>
-                                {system.proxy || system.cookies
-                                    ? `Обхід блокувань: ${[system.proxy && 'проксі', system.cookies && 'cookies'].filter(Boolean).join(' + ')}`
-                                    : 'Без проксі та cookies. Якщо YouTube блокує сервер — див. README, розділ про VPS.'}
-                            </Check2>
-                            <li className="py-1.5 text-dim">
-                                Черга: завантажень {system.queue.downloads}, нарізок {system.queue.renders} · кліпи {system.clip_height}p
-                            </li>
-                        </ul>
+                    {system && (
+                        <p className="mt-2 mb-0 border-t border-line pt-3 text-sm text-dim">
+                            Черга: завантажень {system.queue.downloads}, нарізок {system.queue.renders} · кліпи {system.clip_height}p
+                        </p>
                     )}
                 </section>
             </aside>

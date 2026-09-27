@@ -1,18 +1,16 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Check, Copy, Minus, Plus, QrCode, Trash2, Users } from 'lucide-react';
+import { Check, Copy, Plus, QrCode, Trash2, Users } from 'lucide-react';
 import { api } from '../lib/api';
-import { fmtPoints, joinUrl, teams as teamsLabel } from '../lib/format';
+import { joinUrl, teams as teamsLabel } from '../lib/format';
 import { Button, Empty, InlineEdit, QR, Toggle } from '../ui';
 import { useFeedback } from '../ui/feedbackContext';
-import { teamTotals } from './useProjectStore';
 
 export default function TeamsTab({ store }) {
-    const { project, scores } = store;
+    const { project } = store;
     const [name, setName] = useState('');
     const [copied, setCopied] = useState(false);
     const { toast, confirm } = useFeedback();
-    const totals = useMemo(() => teamTotals(project, scores), [project, scores]);
     const url = joinUrl(project.join_code);
 
     const setOpen = async (open) => {
@@ -114,23 +112,11 @@ export default function TeamsTab({ store }) {
                                     <div className="min-w-0 flex-1">
                                         <InlineEdit value={t.name} maxLength={40} onSave={(v) => v && update(t, { name: v })} className="font-semibold" />
                                     </div>
-                                    <div className="flex items-center gap-1" title="Бонусні / штрафні бали">
-                                        <Button size="sm" variant="ghost" icon={Minus} onClick={() => update(t, { bonus: (t.bonus || 0) - 0.5 })} />
-                                        <span className={`w-10 text-center font-mono text-xs ${t.bonus ? 'text-accent-2' : 'text-faint'}`}>
-                                            {t.bonus > 0 ? '+' : ''}
-                                            {fmtPoints(t.bonus || 0)}
-                                        </span>
-                                        <Button size="sm" variant="ghost" icon={Plus} onClick={() => update(t, { bonus: (t.bonus || 0) + 0.5 })} />
-                                    </div>
-                                    <span className="w-14 text-right text-base font-extrabold tabular-nums">{fmtPoints(totals[t.id] || 0)}</span>
                                     <Button size="sm" variant="ghost" icon={Trash2} className="text-faint hover:text-bad" onClick={() => remove(t)} />
                                 </motion.div>
                             ))}
                         </AnimatePresence>
                     </div>
-                )}
-                {project.teams.length > 0 && (
-                    <p className="mt-2 text-xs text-faint">± — бонусні або штрафні бали (кроком 0,5). Праворуч — загальний рахунок.</p>
                 )}
             </section>
 

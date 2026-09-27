@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ChevronDown, ClipboardCheck, Trophy, Users } from 'lucide-react';
+import { ChevronDown, ClipboardCheck, Minus, Plus, Trophy, Users } from 'lucide-react';
 import { api } from '../lib/api';
 import { fmtPoints } from '../lib/format';
 import { Button, Empty } from '../ui';
@@ -107,6 +107,17 @@ function CategoryScoring({ cat, store }) {
         }
     };
 
+    const setBonus = async (team, bonus) => {
+        const prev = project.teams;
+        store.dispatch({ type: 'teams', teams: prev.map((t) => (t.id === team.id ? { ...t, bonus } : t)) });
+        try {
+            await api.patch(`/api/teams/${team.id}`, { bonus });
+        } catch (e) {
+            store.dispatch({ type: 'teams', teams: prev });
+            toast(e.message, 'bad');
+        }
+    };
+
     const fillWrong = (team) => {
         for (const it of cat.items) if (scores?.[`${team.id}:${it.id}`] === undefined) put(team, it, 0);
     };
@@ -140,7 +151,10 @@ function CategoryScoring({ cat, store }) {
                                         {i + 1}
                                     </th>
                                 ))}
-                                <th className="px-3 py-2 text-right font-semibold">Σ</th>
+                                <th className="px-3 py-2 text-right font-semibold" title="Бали за цю категорію">Σ</th>
+                                <th className="px-2 py-2 text-center font-semibold" title="Бонусні або штрафні бали команди, йдуть у загальний рахунок">
+                                    Бонус
+                                </th>
                                 <th className="px-2 py-2" />
                             </tr>
                         </thead>
@@ -175,15 +189,32 @@ function CategoryScoring({ cat, store }) {
                                                 </td>
                                             );
                                         })}
-                                        <td className={cx('border-t border-line px-3 text-right font-extrabold tabular-nums', complete ? 'text-ink' : 'text-dim')}>
-                                            {fmtPoints(sum)}
+                                        <td className="border-t border-line px-3 text-right">
+                                            <span className={cx('inline-block w-10 font-extrabold tabular-nums', complete ? 'text-ink' : 'text-dim')}>
+                                                {fmtPoints(sum)}
+                                            </span>
+                                        </td>
+                                        <td className="border-t border-line px-2">
+                                            <div className="flex items-center justify-center gap-0.5">
+                                                <Button size="sm" variant="ghost" icon={Minus} onClick={() => setBonus(t, (t.bonus || 0) - 0.5)} aria-label="Мінус пів бала" />
+                                                <span className={cx('inline-block w-11 text-center font-mono text-xs tabular-nums', t.bonus ? 'text-accent-2' : 'text-faint')}>
+                                                    {t.bonus > 0 ? '+' : ''}
+                                                    {fmtPoints(t.bonus || 0)}
+                                                </span>
+                                                <Button size="sm" variant="ghost" icon={Plus} onClick={() => setBonus(t, (t.bonus || 0) + 0.5)} aria-label="Плюс пів бала" />
+                                            </div>
                                         </td>
                                         <td className="border-t border-line px-2 text-right">
-                                            {!complete && (
-                                                <Button size="sm" variant="ghost" className="text-faint" onClick={() => fillWrong(t)} title="Позначити решту як неправильні">
-                                                    решта ✗
-                                                </Button>
-                                            )}
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                className={cx('text-faint', complete && 'invisible')}
+                                                onClick={() => fillWrong(t)}
+                                                title="Позначити решту як неправильні"
+                                                tabIndex={complete ? -1 : 0}
+                                            >
+                                                решта ✗
+                                            </Button>
                                         </td>
                                     </tr>
                                 );
@@ -192,14 +223,14 @@ function CategoryScoring({ cat, store }) {
                     </table>
                 </div>
                 <p className="m-0 border-t border-line px-4 py-2.5 text-xs text-faint">
-                    Натискання: ✓ правильно → ✗ неправильно → ½ частково. Правий клік — одразу ½. Оцінки кількох перевіряльників
-                    синхронізуються наживо.
+                    Натискання: ✓ правильно → ✗ неправильно → ½ частково. Правий клік — одразу ½. Бонус — загальний для
+                    команди, кроком 0,5.
                 </p>
             </div>
 
             <div className="panel self-start">
                 <button type="button" onClick={() => setShowKey((v) => !v)} className="flex w-full items-center justify-between px-4 py-3 font-bold">
-                    Ключ відповідей
+                    Відповіді
                     <ChevronDown size={16} className={cx('transition-transform', showKey && 'rotate-180')} />
                 </button>
                 {showKey && (

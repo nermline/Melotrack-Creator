@@ -167,15 +167,3 @@ export function songState(item, media) {
             return { key: 'pending', tone: 'muted', label: item.clip.url ? 'Оновлюється' : 'Очікує нарізки' };
     }
 }
-
-export function teamTotals(project, scores) {
-    const totals = {};
-    for (const t of project.teams) totals[t.id] = t.bonus || 0;
-    if (scores) {
-        for (const [key, pts] of Object.entries(scores)) {
-            const tid = Number(key.split(':')[0]);
-            if (tid in totals) totals[tid] += pts;
-        }
-    }
-    return totals;
-}

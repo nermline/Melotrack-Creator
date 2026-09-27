@@ -223,14 +223,26 @@ func (t *tailBuffer) String() string {
 	return strings.Join(t.lines, "\n")
 }
 
+var versionCache struct {
+	sync.Mutex
+	value string
+	at    time.Time
+}
+
 // Version returns `yt-dlp --version` and how many days old that release is
-// (-1 when unknown). YouTube breaks old releases within weeks.
+// (-1 when unknown). YouTube breaks old releases within weeks. The answer is
+// cached for a few minutes because the show tab polls it.
 func (y *YtDlp) Version(ctx context.Context) (string, int) {
-	out, err := exec.CommandContext(ctx, y.Path, "--version").Output()
-	if err != nil {
-		return fmt.Sprintf("недоступний (%v)", err), -1
+	versionCache.Lock()
+	defer versionCache.Unlock()
+	if versionCache.value == "" || time.Since(versionCache.at) > 5*time.Minute {
+		out, err := exec.CommandContext(ctx, y.Path, "--version").Output()
+		if err != nil {
+			return fmt.Sprintf("недоступний (%v)", err), -1
+		}
+		versionCache.value, versionCache.at = strings.TrimSpace(string(out)), time.Now()
 	}
-	v := strings.TrimSpace(string(out))
+	v := versionCache.value
 	if len(v) >= 10 {
 		if t, err := time.Parse("2006.01.02", v[:10]); err == nil {
 			return v, int(time.Since(t).Hours() / 24)

@@ -27,7 +27,7 @@ const PHASE_LABEL = {
     thinking: 'Час на відповідь',
     collect: 'Збір бланків',
     answers: 'Правильні відповіді',
-    standings: 'Проміжний залік',
+    standings: 'Проміжні результати',
     scoring: 'Підрахунок балів',
     results: 'Оголошення переможців',
     finished: 'Фінал',
@@ -56,12 +56,13 @@ function primaryAction(v) {
     }
 }
 
-function BigButton({ icon: Icon, children, onClick, disabled, className }) {
+function BigButton({ icon: Icon, children, onClick, disabled, className, title }) {
     return (
         <button
             type="button"
             onClick={onClick}
             disabled={disabled}
+            title={title}
             className={cx(
                 'flex h-16 items-center justify-center gap-2 rounded-2xl border border-line-strong bg-white/[0.06] text-sm font-bold transition-colors active:scale-[0.98] disabled:opacity-35',
                 className,
@@ -200,8 +201,13 @@ export default function RemoteControls({ view, offset, command, status }) {
                 <BigButton icon={FastForward} onClick={() => command('seek', 5)} disabled={!timed}>
                     +5 с
                 </BigButton>
-                <BigButton icon={ListOrdered} onClick={() => command('standings')} disabled={!['answers', 'collect', 'category'].includes(phase) || !host?.teams}>
-                    Залік
+                <BigButton
+                    icon={ListOrdered}
+                    onClick={() => command('standings')}
+                    disabled={!['answers', 'collect', 'category'].includes(phase) || !host?.teams}
+                    title="Показати проміжні результати"
+                >
+                    Проміжні
                 </BigButton>
             </div>
 

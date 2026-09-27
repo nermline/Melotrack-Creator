@@ -85,7 +85,7 @@ export function RingTimer({ fraction, seconds, color = 'var(--a2)', size = '58cq
     const C = 2 * Math.PI * R;
     return (
         <div style={{ position: 'relative', width: size, height: size, maxHeight: '62cqh', maxWidth: '62cqh' }}>
-            <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%', transform: 'rotate(-90deg)' }}>
+            <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%', transform: 'rotate(-90deg)', overflow: 'visible' }}>
                 <circle cx="50" cy="50" r={R} fill="none" stroke="rgb(255 255 255 / 0.1)" strokeWidth="4" />
                 <circle
                     cx="50"

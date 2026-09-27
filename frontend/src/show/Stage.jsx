@@ -239,13 +239,13 @@ function Welcome({ view }) {
                     style={{ padding: '3cqmin', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2cqmin', flexShrink: 0 }}
                     {...rise(0.4)}
                 >
-                    <div className="display" style={{ fontSize: '3.6cqmin' }}>
+                    <div className="display" style={{ fontSize: '4.4cqmin' }}>
                         Реєстрація команд
                     </div>
                     <div style={{ width: '34cqmin', height: '34cqmin' }}>
                         <QR value={joinUrl(join)} size="100%" dark="#0b0b12" />
                     </div>
-                    <div className="sub" style={{ fontFamily: 'ui-monospace, monospace', fontSize: '2.2cqmin' }}>
+                    <div className="sub" style={{ fontFamily: 'ui-monospace, monospace', fontSize: '3cqmin' }}>
                         {joinUrl(join).replace(/^https?:\/\//, '')}
                     </div>
                 </motion.div>
@@ -291,7 +291,7 @@ function answerGrid(n) {
 function Answers({ view }) {
     const list = view.answers || [];
     const { cols, rows } = answerGrid(list.length);
-    const cell = `min(${(88 / cols - 1.5).toFixed(2)}cqw, ${((70 - (rows - 1) * 2) / rows / 1.24).toFixed(2)}cqh)`;
+    const cell = `min(${(88 / cols - 1.5).toFixed(2)}cqw, ${((68 - (rows - 1) * 2) / rows / 1.36).toFixed(2)}cqh)`;
     return (
         <div className="layer" style={{ justifyContent: 'flex-start', paddingTop: '5cqmin' }}>
             <motion.div className="display title-m" {...rise(0)}>
@@ -327,14 +327,14 @@ function Answers({ view }) {
                                     position: 'absolute',
                                     top: '0.8cqmin',
                                     left: '0.8cqmin',
-                                    minWidth: '4.2cqmin',
-                                    height: '4.2cqmin',
+                                    minWidth: '5.4cqmin',
+                                    height: '5.4cqmin',
                                     display: 'grid',
                                     placeItems: 'center',
                                     borderRadius: '99cqmin',
                                     background: 'var(--a1)',
                                     color: 'var(--bg)',
-                                    fontSize: '2.4cqmin',
+                                    fontSize: '3.2cqmin',
                                     fontStyle: 'normal',
                                 }}
                             >
@@ -344,7 +344,7 @@ function Answers({ view }) {
                         <div
                             style={{
                                 marginTop: '0.8cqmin',
-                                fontSize: `clamp(8px, ${Math.max(1.5, 2.8 - cols * 0.2).toFixed(2)}cqmin, 32px)`,
+                                fontSize: `clamp(9px, ${Math.max(2.3, 4 - cols * 0.28).toFixed(2)}cqmin, 60px)`,
                                 fontWeight: 700,
                                 lineHeight: 1.2,
                                 display: '-webkit-box',
@@ -372,13 +372,13 @@ function Standings({ view }) {
                 Після {view.cat_index + 1} {plural(view.cat_index + 1, 'категорії', 'категорій', 'категорій')}
             </motion.div>
             <motion.div className="display title-l" style={{ margin: '1.5cqmin 0 4cqmin' }} {...rise(0.1)}>
-                Проміжний залік
+                Проміжні результати
             </motion.div>
             <div style={{ width: 'min(80cqw, 120cqh)', display: 'grid', gap: '1.2cqmin' }}>
                 {board.map((b, i) => (
                     <motion.div
                         key={b.team_id}
-                        style={{ display: 'grid', gridTemplateColumns: '6cqmin 1fr 10cqmin', alignItems: 'center', gap: '2cqmin', fontSize: `min(3.2cqmin, ${(52 / board.length).toFixed(1)}cqh)` }}
+                        style={{ display: 'grid', gridTemplateColumns: '7cqmin 1fr 12cqmin', alignItems: 'center', gap: '2cqmin', fontSize: `min(4.4cqmin, ${(56 / board.length).toFixed(1)}cqh)` }}
                         initial={{ opacity: 0, x: '-4cqmin' }}
                         animate={{ opacity: 1, x: 0, transition: { delay: 0.3 + i * 0.08 } }}
                     >
@@ -428,6 +428,13 @@ function useConfetti(fire, preview, theme) {
 
 const MEDAL = { 1: 'var(--a2)', 2: '#d9dde6', 3: '#e3a36b' };
 
+// podiumFont shrinks a team name until its longest word fits the pedestal,
+// so names wrap between words and never inside one.
+function podiumFont(name, base, width) {
+    const longest = Math.max(...name.split(/\s+/).map((w) => w.length), 1);
+    return Math.min(base, (width * 0.92) / (longest * 0.82)).toFixed(2);
+}
+
 function Results({ view, preview }) {
     const board = view.board || [];
     const n = board.length;
@@ -455,7 +462,7 @@ function Results({ view, preview }) {
                             display: 'grid',
                             gridTemplateColumns: rest.length > 8 ? '1fr 1fr' : '1fr',
                             gap: '0.8cqmin 2cqmin',
-                            fontSize: `min(2.8cqmin, ${(50 / Math.ceil(rest.length / (rest.length > 8 ? 2 : 1))).toFixed(1)}cqh)`,
+                            fontSize: `min(3.8cqmin, ${(52 / Math.ceil(rest.length / (rest.length > 8 ? 2 : 1))).toFixed(1)}cqh)`,
                         }}
                     >
                         {rest.map((b, j) => {
@@ -500,7 +507,7 @@ function Results({ view, preview }) {
                                             <div
                                                 className="display"
                                                 style={{
-                                                    fontSize: `${(i === 0 ? 4.2 : 3.2) * (b.name.length > 14 ? 0.8 : 1)}cqmin`,
+                                                    fontSize: `${podiumFont(b.name, i === 0 ? 5.2 : 4, i === 0 ? 28 : 24)}cqmin`,
                                                     lineHeight: 1.1,
                                                     textShadow: 'var(--glow)',
                                                     overflowWrap: 'break-word',
@@ -552,8 +559,8 @@ function Finished({ view, preview }) {
                 Дякуємо за гру!
             </motion.div>
             {winners.length > 0 && (
-                <motion.div className="sub" style={{ marginTop: '4cqmin', fontSize: '3.6cqmin' }} {...rise(0.3)}>
-                    {winners.length > 1 ? 'Переможці' : 'Переможець'}:{' '}
+                <motion.div className="sub" style={{ marginTop: '4cqmin', fontSize: '5cqmin' }} {...rise(0.3)}>
+                    Переможці:{' '}
                     <b style={{ color: 'var(--a2)' }}>{winners.map((w) => w.name).join(', ')}</b>
                 </motion.div>
             )}

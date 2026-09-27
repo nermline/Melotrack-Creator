@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion, Reorder, useDragControls } from 'framer-motion';
 import {
@@ -234,8 +234,6 @@ function CategoryView({ cat, store, onRename, onDelete, onEdit }) {
         store.reload();
     };
 
-    const total = useMemo(() => cat.items.reduce((s, i) => s + (i.end - i.start), 0), [cat.items]);
-
     return (
         <div>
             <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -249,7 +247,7 @@ function CategoryView({ cat, store, onRename, onDelete, onEdit }) {
                         inputClassName="mt-1 max-w-md text-lg"
                     />
                     <div className="mt-1 text-sm text-dim">
-                        {songs(cat.items.length)} · звучання {fmtTime(total)}
+                        {songs(cat.items.length)}
                     </div>
                 </div>
                 <Button variant="danger" size="sm" icon={Trash2} onClick={onDelete}>

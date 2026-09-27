@@ -110,19 +110,20 @@
   text-shadow: var(--glow);
 }
 .stage .title-m {
-  font-size: clamp(14px, 5.2cqmin, 90px);
+  font-size: clamp(14px, 6.2cqmin, 110px);
 }
 .stage .eyebrow-s {
   font-family: var(--body);
-  font-size: clamp(9px, 2.4cqmin, 36px);
+  font-size: clamp(9px, 3.3cqmin, 52px);
   font-weight: 800;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--a2);
 }
 .stage .sub {
-  font-size: clamp(10px, 2.8cqmin, 44px);
+  font-size: clamp(10px, 4cqmin, 64px);
   color: var(--dim);
+  text-shadow: 0 0.2cqmin 1.2cqmin rgb(0 0 0 / 0.6);
 }
 .stage .card {
   background: var(--card);
@@ -133,9 +134,9 @@
 .stage .pill {
   display: inline-flex;
   align-items: center;
-  padding: 0.9cqmin 2.2cqmin;
+  padding: 1cqmin 2.6cqmin;
   border-radius: 99cqmin;
-  font-size: clamp(9px, 2.3cqmin, 34px);
+  font-size: clamp(9px, 3.3cqmin, 50px);
   font-weight: 700;
   background: var(--card);
   border: 1px solid var(--card-line);
@@ -421,8 +422,9 @@
 
 .stage .corner {
   position: absolute;
+  text-shadow: 0 0.2cqmin 1cqmin rgb(0 0 0 / 0.6);
   z-index: 7;
-  font-size: clamp(8px, 1.9cqmin, 28px);
+  font-size: clamp(8px, 2.7cqmin, 40px);
   font-weight: 700;
   color: var(--dim);
   letter-spacing: 0.08em;
