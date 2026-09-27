@@ -168,7 +168,7 @@ func TestBackNavigation(t *testing.T) {
 	expectPhase(t, e, PhaseWelcome)
 }
 
-func TestReplayAndStandings(t *testing.T) {
+func TestReplayAndNoIntermediateResults(t *testing.T) {
 	e, _, clk := newTestEngine(1)
 	e.Apply("start", 0)
 	e.Next()
@@ -183,10 +183,11 @@ func TestReplayAndStandings(t *testing.T) {
 	e.Next()
 	e.Next() // collect
 	e.Next() // answers
-	e.Apply("standings", 0)
-	expectPhase(t, e, PhaseStandings)
-	if len(e.Board) != 2 {
-		t.Fatalf("board = %d teams", len(e.Board))
+	if e.Apply("standings", 0) {
+		t.Fatal("results must only be shown at the end")
+	}
+	if len(e.Board) != 0 {
+		t.Fatal("the leaderboard must not be loaded before the results")
 	}
 	e.Next() // last category → scoring
 	expectPhase(t, e, PhaseScoring)

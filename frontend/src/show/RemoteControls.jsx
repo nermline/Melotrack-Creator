@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import {
     ChevronDown,
     FastForward,
-    ListOrdered,
     Monitor,
     Pause,
     Play,
@@ -27,7 +26,6 @@ const PHASE_LABEL = {
     thinking: 'Час на відповідь',
     collect: 'Збір бланків',
     answers: 'Правильні відповіді',
-    standings: 'Проміжні результати',
     scoring: 'Підрахунок балів',
     results: 'Оголошення переможців',
     finished: 'Фінал',
@@ -41,7 +39,6 @@ function primaryAction(v) {
         case 'collect':
             return { label: 'Показати відповіді', icon: SkipForward };
         case 'answers':
-        case 'standings':
             return v.cat_index + 1 < v.cat_count
                 ? { label: 'Наступна категорія', icon: SkipForward }
                 : { label: 'До результатів', icon: Trophy };
@@ -86,7 +83,7 @@ export default function RemoteControls({ view, offset, command, status }) {
     const primary = primaryAction(view);
     const host = view?.host;
     const phase = view?.phase;
-    const inCategory = ['category', 'countdown', 'playing', 'thinking', 'collect', 'answers', 'standings'].includes(phase);
+    const inCategory = ['category', 'countdown', 'playing', 'thinking', 'collect', 'answers'].includes(phase);
 
     useEffect(() => {
         const onKey = (e) => {
@@ -195,19 +192,13 @@ export default function RemoteControls({ view, offset, command, status }) {
                 <BigButton icon={Repeat} onClick={() => command('replay')} disabled={!['playing', 'thinking'].includes(phase)}>
                     Ще раз
                 </BigButton>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
                 <BigButton icon={Rewind} onClick={() => command('seek', -5)} disabled={!timed}>
                     −5 с
                 </BigButton>
                 <BigButton icon={FastForward} onClick={() => command('seek', 5)} disabled={!timed}>
                     +5 с
-                </BigButton>
-                <BigButton
-                    icon={ListOrdered}
-                    onClick={() => command('standings')}
-                    disabled={!['answers', 'collect', 'category'].includes(phase) || !host?.teams}
-                    title="Показати проміжні результати"
-                >
-                    Проміжні
                 </BigButton>
             </div>
 

@@ -13,7 +13,6 @@ const (
 	PhaseThinking  Phase = "thinking"  // pause to write the answer down (timed)
 	PhaseCollect   Phase = "collect"   // "hand in your sheets, answers coming up"
 	PhaseAnswers   Phase = "answers"   // correct answers of the category
-	PhaseStandings Phase = "standings" // optional intermediate table between categories
 	PhaseScoring   Phase = "scoring"   // "counting the points…" before the results
 	PhaseResults   Phase = "results"   // winners revealed step by step
 	PhaseFinished  Phase = "finished"  // thank-you screen
@@ -111,8 +110,6 @@ func (e *Engine) Apply(action string, value float64) bool {
 			return false
 		}
 		e.enterCategory(i)
-	case "standings":
-		e.enterStandings()
 	case "results":
 		e.enterScoring()
 	case "reset":
@@ -154,7 +151,7 @@ func (e *Engine) Next() {
 		}
 	case PhaseCollect:
 		e.set(PhaseAnswers, 0)
-	case PhaseAnswers, PhaseStandings:
+	case PhaseAnswers:
 		if e.Cat+1 < len(e.Cats) {
 			e.enterCategory(e.Cat + 1)
 		} else {
@@ -197,8 +194,6 @@ func (e *Engine) Back() {
 		}
 	case PhaseAnswers:
 		e.set(PhaseCollect, 0)
-	case PhaseStandings:
-		e.set(PhaseAnswers, 0)
 	case PhaseScoring:
 		if len(e.Cats) > 0 {
 			e.Cat = len(e.Cats) - 1
@@ -248,11 +243,6 @@ func (e *Engine) enterPlaying(j int) {
 		d = items[j].DurationMs
 	}
 	e.set(PhasePlaying, d)
-}
-
-func (e *Engine) enterStandings() {
-	e.Board = e.src.Leaderboard()
-	e.set(PhaseStandings, 0)
 }
 
 func (e *Engine) enterScoring() {

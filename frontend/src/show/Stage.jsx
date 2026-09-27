@@ -7,6 +7,7 @@ import { remainingMs, useTick } from '../lib/live';
 import { fmtPoints, joinUrl, plural, points, songs } from '../lib/format';
 import { QR } from '../ui';
 import { Backdrop, PlayingVisual, RingTimer } from './visuals';
+import Answers from './Answers';
 import { cues } from './sound';
 import './show.css';
 
@@ -164,8 +165,6 @@ function Phase({ view, sec, frac, preview, videoOn }) {
             );
         case 'answers':
             return <Answers view={view} />;
-        case 'standings':
-            return <Standings view={view} />;
         case 'scoring':
             return (
                 <div className="layer">
@@ -278,127 +277,6 @@ function Sheets() {
                     ))}
                 </motion.div>
             ))}
-        </div>
-    );
-}
-
-function answerGrid(n) {
-    const cols = n <= 5 ? Math.max(n, 1) : n <= 6 ? 3 : n <= 8 ? 4 : n <= 10 ? 5 : n <= 12 ? 6 : Math.ceil(n / 3);
-    const rows = Math.ceil(n / cols);
-    return { cols, rows };
-}
-
-function Answers({ view }) {
-    const list = view.answers || [];
-    const { cols, rows } = answerGrid(list.length);
-    const cell = `min(${(88 / cols - 1.5).toFixed(2)}cqw, ${((68 - (rows - 1) * 2) / rows / 1.36).toFixed(2)}cqh)`;
-    return (
-        <div className="layer" style={{ justifyContent: 'flex-start', paddingTop: '5cqmin' }}>
-            <motion.div className="display title-m" {...rise(0)}>
-                {view.category?.title}
-            </motion.div>
-            <div className="sub" style={{ marginTop: '0.8cqmin' }}>
-                Правильні відповіді
-            </div>
-            <div
-                style={{
-                    flex: 1,
-                    display: 'grid',
-                    gridTemplateColumns: `repeat(${cols}, ${cell})`,
-                    gap: '1.8cqmin',
-                    alignContent: 'center',
-                    justifyContent: 'center',
-                    marginTop: '2cqmin',
-                }}
-            >
-                {list.map((a, i) => (
-                    <motion.div
-                        key={a.id}
-                        className="card"
-                        style={{ padding: '0.8cqmin', textAlign: 'left', overflow: 'hidden' }}
-                        initial={{ opacity: 0, y: '4cqmin', rotateX: -40 }}
-                        animate={{ opacity: 1, y: 0, rotateX: 0, transition: { delay: 0.25 + i * 0.12, type: 'spring', stiffness: 160, damping: 18 } }}
-                    >
-                        <div style={{ position: 'relative', aspectRatio: '1', borderRadius: '1.2cqmin', overflow: 'hidden', background: 'rgb(0 0 0 / .3)' }}>
-                            {a.image_url && <img src={a.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
-                            <span
-                                className="display"
-                                style={{
-                                    position: 'absolute',
-                                    top: '0.8cqmin',
-                                    left: '0.8cqmin',
-                                    minWidth: '5.4cqmin',
-                                    height: '5.4cqmin',
-                                    display: 'grid',
-                                    placeItems: 'center',
-                                    borderRadius: '99cqmin',
-                                    background: 'var(--a1)',
-                                    color: 'var(--bg)',
-                                    fontSize: '3.2cqmin',
-                                    fontStyle: 'normal',
-                                }}
-                            >
-                                {i + 1}
-                            </span>
-                        </div>
-                        <div
-                            style={{
-                                marginTop: '0.8cqmin',
-                                fontSize: `clamp(9px, ${Math.max(2.3, 4 - cols * 0.28).toFixed(2)}cqmin, 60px)`,
-                                fontWeight: 700,
-                                lineHeight: 1.2,
-                                display: '-webkit-box',
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: 'vertical',
-                                overflow: 'hidden',
-                                minHeight: '2.4em',
-                            }}
-                        >
-                            {a.answer}
-                        </div>
-                    </motion.div>
-                ))}
-            </div>
-        </div>
-    );
-}
-
-function Standings({ view }) {
-    const board = (view.board || []).slice(0, 12);
-    const max = Math.max(1, ...board.map((b) => b.points));
-    return (
-        <div className="layer">
-            <motion.div className="eyebrow-s" {...rise(0)}>
-                Після {view.cat_index + 1} {plural(view.cat_index + 1, 'категорії', 'категорій', 'категорій')}
-            </motion.div>
-            <motion.div className="display title-l" style={{ margin: '1.5cqmin 0 4cqmin' }} {...rise(0.1)}>
-                Проміжні результати
-            </motion.div>
-            <div style={{ width: 'min(80cqw, 120cqh)', display: 'grid', gap: '1.2cqmin' }}>
-                {board.map((b, i) => (
-                    <motion.div
-                        key={b.team_id}
-                        style={{ display: 'grid', gridTemplateColumns: '7cqmin 1fr 12cqmin', alignItems: 'center', gap: '2cqmin', fontSize: `min(4.4cqmin, ${(56 / board.length).toFixed(1)}cqh)` }}
-                        initial={{ opacity: 0, x: '-4cqmin' }}
-                        animate={{ opacity: 1, x: 0, transition: { delay: 0.3 + i * 0.08 } }}
-                    >
-                        <span className="display" style={{ color: 'var(--a2)', fontStyle: 'normal' }}>
-                            {b.rank}
-                        </span>
-                        <div style={{ position: 'relative', height: '1.9em', display: 'flex', alignItems: 'center' }}>
-                            <motion.div
-                                style={{ position: 'absolute', inset: 0, borderRadius: '1cqmin', background: 'linear-gradient(90deg, var(--a1), var(--a3))', opacity: 0.55, transformOrigin: 'left' }}
-                                initial={{ scaleX: 0 }}
-                                animate={{ scaleX: Math.max(b.points / max, 0.02), transition: { delay: 0.5 + i * 0.08, duration: 0.9 } }}
-                            />
-                            <span style={{ position: 'relative', paddingLeft: '1.5cqmin', fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.name}</span>
-                        </div>
-                        <span className="display" style={{ textAlign: 'right', fontStyle: 'normal' }}>
-                            {fmtPoints(b.points)}
-                        </span>
-                    </motion.div>
-                ))}
-            </div>
         </div>
     );
 }

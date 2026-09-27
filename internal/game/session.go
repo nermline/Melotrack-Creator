@@ -97,6 +97,14 @@ type Session struct {
 	done      chan struct{}
 }
 
+// knownPhases guards restoring a position saved by an older version
+// (which, for example, had an intermediate-standings screen).
+var knownPhases = map[Phase]bool{
+	PhaseWelcome: true, PhaseCategory: true, PhaseCountdown: true, PhasePlaying: true,
+	PhaseThinking: true, PhaseCollect: true, PhaseAnswers: true, PhaseScoring: true,
+	PhaseResults: true, PhaseFinished: true,
+}
+
 type savedState struct {
 	Phase  Phase      `json:"phase"`
 	Cat    int        `json:"cat"`
@@ -129,7 +137,7 @@ func (s *Session) restore(raw string) {
 		return
 	}
 	var st savedState
-	if json.Unmarshal([]byte(raw), &st) != nil || st.Phase == "" {
+	if json.Unmarshal([]byte(raw), &st) != nil || !knownPhases[st.Phase] {
 		return
 	}
 	e := s.eng
@@ -373,7 +381,7 @@ func (s *Session) View(host bool) View {
 		if s.info.RegOpen {
 			v.JoinCode = s.info.JoinCode
 		}
-	case PhaseStandings, PhaseResults, PhaseFinished:
+	case PhaseResults, PhaseFinished:
 		v.Board = e.Board
 	}
 	if cat != nil && e.Phase != PhaseWelcome && e.Phase != PhaseScoring && e.Phase != PhaseResults && e.Phase != PhaseFinished {
