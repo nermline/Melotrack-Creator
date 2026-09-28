@@ -47,7 +47,8 @@ ENV HOST=0.0.0.0 \
     YTDLP_PATH=/opt/yt-dlp/bin/yt-dlp \
     YTDLP_AUTO_UPDATE=true
 
-USER melotrack
+# The entrypoint starts as root only to fix ownership of the data volume,
+# then drops to the melotrack user before running anything else.
 EXPOSE 8080
 VOLUME ["/data"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s \

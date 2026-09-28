@@ -44,7 +44,33 @@ docker compose up -d --build
 
 Під час кожного старту контейнер оновлює yt-dlp: YouTube регулярно ламає старі версії, і це найчастіша причина помилок завантаження. Щоб оновити вручну, просто перезапустіть контейнер: `docker compose restart`.
 
-Для HTTPS поставте перед сервером будь-який reverse proxy (Caddy, nginx) і задайте `SECURE_COOKIES=true`. WebSocket-и мають проходити крізь проксі (`/api/projects/*/live`).
+Для HTTPS поставте перед сервером будь-який reverse proxy (Caddy, nginx) і задайте `SECURE_COOKIES=true`. Приклад для nginx (сервер із застосунком може бути й іншою машиною, наприклад у WireGuard):
+
+```nginx
+server {
+    server_name melotrack.example.com;
+    # listen 443 ssl; ssl_certificate … — як у решті ваших сайтів
+
+    client_max_body_size 2g;            # ручне завантаження відео (MAX_UPLOAD_MB)
+
+    location / {
+        proxy_pass http://10.0.0.148:8080;
+        proxy_set_header Host $host;    # обовʼязково: без цього WebSocket відхиляється
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;         # WebSocket (показ і живі оновлення)
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_read_timeout 1h;
+        proxy_request_buffering off;    # великі файли йдуть одразу на сервер
+    }
+}
+
+# у блоці http { }:
+map $http_upgrade $connection_upgrade { default upgrade; '' close; }
+```
+
+Із `SECURE_COOKIES=true` увійти можна лише через HTTPS. Якщо відкривати сервер напряму за `http://…:8080`, сесія не збережеться. Для перевірки в локальній мережі тимчасово поставте `false`.
 
 ## YouTube на VPS
 
