@@ -7,10 +7,10 @@ export function fmtTime(sec, withTenths = false) {
     return withTenths ? `${base}.${Math.floor((s - whole) * 10)}` : base;
 }
 
-// Points may be fractional (up to two decimals) and negative.
+// Points may be fractional (up to two decimals).
 export function fmtPoints(p) {
     if (p == null) return '0';
-    return String(Math.round(p * 100) / 100).replace('.', ',').replace('-', '−');
+    return String(Math.round(p * 100) / 100).replace('.', ',');
 }
 
 export function fmtDate(iso) {

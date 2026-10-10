@@ -155,7 +155,7 @@ type scoreDTO struct {
 }
 
 // maxPoints bounds a single answer; categories set their own rules, so any
-// number in range is allowed (fractions and penalties included).
+// number from 0 to maxPoints is allowed, fractions included.
 const maxPoints = 100
 
 func (s *Server) listScores(c *gin.Context) {
@@ -183,8 +183,8 @@ func (s *Server) putScore(c *gin.Context) {
 	}
 	if in.Points != nil {
 		p := *in.Points
-		if math.IsNaN(p) || math.Abs(p) > maxPoints {
-			badRequest(c, fmt.Sprintf("Бали: від −%d до %d", maxPoints, maxPoints))
+		if math.IsNaN(p) || p < 0 || p > maxPoints {
+			badRequest(c, fmt.Sprintf("Бали: від 0 до %d", maxPoints))
 			return
 		}
 		p = math.Round(p*100) / 100

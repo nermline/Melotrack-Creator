@@ -7,21 +7,20 @@ import { Button, Empty } from '../ui';
 import { cx } from '../lib/cx';
 import { useFeedback } from '../ui/feedbackContext';
 
-// Each category has its own rules, so points are typed in by hand: any number,
-// fractions and penalties included. An empty cell means "not checked yet".
+// Each category has its own rules, so points are typed in by hand: any number
+// from 0 up, fractions included. An empty cell means "not checked yet".
 const toInput = (v) => (v === undefined ? '' : String(v).replace('.', ','));
 
 function parsePoints(text) {
-    const t = text.trim().replace(',', '.').replace('−', '-');
+    const t = text.trim().replace(',', '.');
     if (t === '') return null;
     const n = Number(t);
-    return Number.isFinite(n) ? Math.round(n * 100) / 100 : undefined;
+    return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : undefined;
 }
 
 function cellTone(v) {
     if (v === undefined) return 'border-dashed border-line-strong bg-transparent';
     if (v > 0) return 'border-ok/40 bg-ok/15 text-ok';
-    if (v < 0) return 'border-bad/50 bg-bad/20 text-bad';
     return 'border-line bg-white/[0.05] text-dim';
 }
 
@@ -33,8 +32,10 @@ function PointsCell({ value, row, col, title, onCommit, onMove }) {
 
     const commit = () => {
         if (draft === null) return;
+        const unchanged = draft === toInput(value);
         const parsed = parsePoints(draft);
         setDraft(null);
+        if (unchanged) return;
         if (parsed === undefined) {
             toast(`«${draft}» — не число`, 'bad');
             return;
@@ -53,7 +54,7 @@ function PointsCell({ value, row, col, title, onCommit, onMove }) {
                 setDraft(toInput(value));
                 e.target.select();
             }}
-            onChange={(e) => setDraft(e.target.value.replace(/[^0-9.,\-−]/g, ''))}
+            onChange={(e) => setDraft(e.target.value.replace(/[^0-9.,]/g, ''))}
             onBlur={commit}
             onKeyDown={(e) => {
                 if (e.key === 'Enter') {
@@ -273,10 +274,6 @@ function CategoryScoring({ cat, store }) {
                         </tbody>
                     </table>
                 </div>
-                <p className="m-0 border-t border-line px-4 py-2.5 text-xs text-faint">
-                    Впишіть бали за кожну відповідь за правилами цієї категорії — можна дробові (0,5) і відʼємні. Enter —
-                    наступна клітинка, ↑↓ — сусідня команда, Esc — скасувати. Порожня клітинка — ще не перевірено.
-                </p>
             </div>
 
             <div className="panel self-start">

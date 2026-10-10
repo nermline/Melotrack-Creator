@@ -177,7 +177,8 @@ func TestContentFlow(t *testing.T) {
 		t.Fatalf("points are kept to two decimals: %v", got)
 	}
 	e.do("PUT", "/api/scores", map[string]any{"team_id": t2, "item_id": iid, "points": 4}, http.StatusOK)
-	e.do("PUT", "/api/scores", map[string]any{"team_id": t2, "item_id": iid2, "points": -1.5}, http.StatusOK)
+	e.do("PUT", "/api/scores", map[string]any{"team_id": t2, "item_id": iid2, "points": -1.5}, http.StatusBadRequest)
+	e.do("PUT", "/api/scores", map[string]any{"team_id": t2, "item_id": iid2, "points": 0}, http.StatusOK)
 	e.do("PUT", "/api/scores", map[string]any{"team_id": t1, "item_id": iid2, "points": 1}, http.StatusOK)
 	cleared := e.do("PUT", "/api/scores", map[string]any{"team_id": t1, "item_id": iid2, "points": nil}, http.StatusOK)
 	if cleared["points"] != nil {
@@ -208,8 +209,8 @@ func TestContentFlow(t *testing.T) {
 	v = waitPhase(t, ws, "results")
 	board := v["board"].([]any)
 	top := board[0].(map[string]any)
-	// Роллінги: 4 + (−1.5) = 2.5; Бітлз: 2.26 (the cleared cell does not count).
-	if top["name"] != "Роллінги" || top["points"].(float64) != 2.5 || board[1].(map[string]any)["points"].(float64) != 2.26 {
+	// Роллінги: 4 + 0 = 4; Бітлз: 2.26 (the cleared cell does not count).
+	if top["name"] != "Роллінги" || top["points"].(float64) != 4 || board[1].(map[string]any)["points"].(float64) != 2.26 {
 		t.Fatalf("leaderboard: %v", board)
 	}
 

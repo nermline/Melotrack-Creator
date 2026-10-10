@@ -138,6 +138,10 @@ DROP TABLE projects;
 ALTER TABLE projects_v2 RENAME TO projects;
 ALTER TABLE teams DROP COLUMN bonus;
 `,
+	// 3: points are never negative.
+	`
+UPDATE scores SET points = 0 WHERE points < 0;
+`,
 }
 
 func migrate(db *gorm.DB, path string, legacy LegacyImport) error {
