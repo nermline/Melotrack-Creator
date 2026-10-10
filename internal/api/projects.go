@@ -100,7 +100,7 @@ func (s *Server) createProject(c *gin.Context) {
 		badRequest(c, "Вкажіть назву (до 120 символів)")
 		return
 	}
-	p := store.Project{Title: title, Theme: "neon", ThinkSeconds: 10, JoinCode: store.NewJoinCode()}
+	p := store.Project{Title: title, Theme: "neon", ThinkSeconds: 10}
 	if err := s.db.Create(&p).Error; err != nil {
 		if store.IsUniqueViolation(err) {
 			fail(c, http.StatusConflict, "duplicate", "Проєкт з такою назвою вже є")
@@ -118,10 +118,9 @@ func (s *Server) updateProject(c *gin.Context) {
 		return
 	}
 	var in struct {
-		Title            *string `json:"title"`
-		Theme            *string `json:"theme"`
-		ThinkSeconds     *int    `json:"think_seconds"`
-		RegistrationOpen *bool   `json:"registration_open"`
+		Title        *string `json:"title"`
+		Theme        *string `json:"theme"`
+		ThinkSeconds *int    `json:"think_seconds"`
 	}
 	if !bindJSON(c, &in) {
 		return
@@ -148,9 +147,6 @@ func (s *Server) updateProject(c *gin.Context) {
 			return
 		}
 		upd["think_seconds"] = *in.ThinkSeconds
-	}
-	if in.RegistrationOpen != nil {
-		upd["registration_open"] = *in.RegistrationOpen
 	}
 	if len(upd) > 0 {
 		if err := s.db.Model(&store.Project{}).Where("id = ?", pid).Updates(upd).Error; err != nil {
@@ -215,7 +211,7 @@ func (s *Server) duplicateProject(c *gin.Context) {
 		failInternal(c, err)
 		return
 	}
-	dst := store.Project{Title: title, Theme: src.Theme, ThinkSeconds: src.ThinkSeconds, JoinCode: store.NewJoinCode()}
+	dst := store.Project{Title: title, Theme: src.Theme, ThinkSeconds: src.ThinkSeconds}
 	err = s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Omit("Categories", "Teams").Create(&dst).Error; err != nil {
 			return err

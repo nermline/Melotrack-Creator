@@ -190,7 +190,7 @@ func (s *Server) createUploadItem(c *gin.Context) {
 	var it store.Item
 	var m store.Media
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		m = store.Media{YouTubeID: "file-" + store.NewJoinCode() + store.NewJoinCode(), Status: store.MediaDownloading,
+		m = store.Media{YouTubeID: "file-" + store.RandomCode() + store.RandomCode(), Status: store.MediaDownloading,
 			SourceKind: "upload", Title: truncateRunes(name, 200)}
 		if err := tx.Create(&m).Error; err != nil {
 			return err
@@ -451,7 +451,7 @@ func (s *Server) uploadImage(c *gin.Context) {
 		return
 	}
 	img = fitImage(img, 1000)
-	name := fmt.Sprintf("%d-%s.jpg", it.ID, store.NewJoinCode())
+	name := fmt.Sprintf("%d-%s.jpg", it.ID, store.RandomCode())
 	path := s.media.Storage().Image(name)
 	out, err := os.Create(path)
 	if err != nil {

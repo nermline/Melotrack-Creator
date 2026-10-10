@@ -60,8 +60,8 @@ type legacyItem struct {
 
 func importLegacy(tx *gorm.DB, li LegacyImport) ([]fileMove, error) {
 	stmts := []string{
-		`INSERT INTO projects (id, created_at, updated_at, title, join_code)
-			SELECT id, created_at, updated_at, title, lower(hex(randomblob(3))) FROM legacy_projects`,
+		`INSERT INTO projects (id, created_at, updated_at, title)
+			SELECT id, created_at, updated_at, title FROM legacy_projects`,
 		`INSERT INTO categories (id, created_at, updated_at, project_id, title, position)
 			SELECT id, created_at, updated_at, project_id, title, position FROM legacy_categories
 			WHERE project_id IN (SELECT id FROM projects)`,
@@ -128,7 +128,7 @@ func importLegacy(tx *gorm.DB, li LegacyImport) ([]fileMove, error) {
 			moves = append(moves, fileMove{
 				kind: "image", id: it.ID,
 				from:  filepath.Join(li.DownloadsDir, "answers", filepath.FromSlash(rel)),
-				toDir: li.ImagesDir, toName: fmt.Sprintf("%d-%s.jpg", it.ID, NewJoinCode()),
+				toDir: li.ImagesDir, toName: fmt.Sprintf("%d-%s.jpg", it.ID, RandomCode()),
 			})
 		}
 	}

@@ -11,7 +11,6 @@ import ProjectPage from './project/ProjectPage';
 const Screen = lazy(() => import('./pages/Screen'));
 const Remote = lazy(() => import('./pages/Remote'));
 const Preview = lazy(() => import('./pages/Preview'));
-const Join = lazy(() => import('./pages/Join'));
 
 function Loading() {
     return (
@@ -59,7 +58,6 @@ export default function App() {
                 <Suspense fallback={<Loading />}>
                     <Routes>
                         <Route path="/login" element={<Login />} />
-                        <Route path="/join/:code" element={<Join />} />
                         <Route path="/" element={<Private><Projects /></Private>} />
                         <Route path="/p/:pid/screen" element={<Private><Screen /></Private>} />
                         <Route path="/p/:pid/remote" element={<Private><Remote /></Private>} />

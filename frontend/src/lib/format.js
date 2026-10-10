@@ -7,9 +7,10 @@ export function fmtTime(sec, withTenths = false) {
     return withTenths ? `${base}.${Math.floor((s - whole) * 10)}` : base;
 }
 
+// Points may be fractional (up to two decimals) and negative.
 export function fmtPoints(p) {
     if (p == null) return '0';
-    return Number.isInteger(p) ? String(p) : p.toFixed(1).replace('.', ',');
+    return String(Math.round(p * 100) / 100).replace('.', ',').replace('-', '−');
 }
 
 export function fmtDate(iso) {
@@ -33,7 +34,3 @@ export const teams = (n) => `${n} ${plural(n, 'команда', 'команди'
 export const categories = (n) => `${n} ${plural(n, 'категорія', 'категорії', 'категорій')}`;
 export const points = (p) =>
     `${fmtPoints(p)} ${Number.isInteger(p) ? plural(p, 'бал', 'бали', 'балів') : 'бала'}`;
-
-export function joinUrl(code) {
-    return `${location.origin}/join/${code}`;
-}

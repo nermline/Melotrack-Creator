@@ -1,20 +1,80 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ChevronDown, ClipboardCheck, Minus, Plus, Trophy, Users } from 'lucide-react';
+import { ChevronDown, ClipboardCheck, Trophy, Users } from 'lucide-react';
 import { api } from '../lib/api';
 import { fmtPoints } from '../lib/format';
 import { Button, Empty } from '../ui';
 import { cx } from '../lib/cx';
 import { useFeedback } from '../ui/feedbackContext';
 
-// Tapping a cell cycles: not checked → correct → wrong → half → correct…
-const NEXT = { undefined: 1, 1: 0, 0: 0.5, 0.5: 1 };
-const CELL = {
-    undefined: { label: '·', cls: 'bg-white/[0.04] text-faint border-line' },
-    1: { label: '✓', cls: 'bg-ok/20 text-ok border-ok/40' },
-    0.5: { label: '½', cls: 'bg-warn/20 text-warn border-warn/40' },
-    0: { label: '✗', cls: 'bg-bad/15 text-bad border-bad/30' },
-};
+// Each category has its own rules, so points are typed in by hand: any number,
+// fractions and penalties included. An empty cell means "not checked yet".
+const toInput = (v) => (v === undefined ? '' : String(v).replace('.', ','));
+
+function parsePoints(text) {
+    const t = text.trim().replace(',', '.').replace('−', '-');
+    if (t === '') return null;
+    const n = Number(t);
+    return Number.isFinite(n) ? Math.round(n * 100) / 100 : undefined;
+}
+
+function cellTone(v) {
+    if (v === undefined) return 'border-dashed border-line-strong bg-transparent';
+    if (v > 0) return 'border-ok/40 bg-ok/15 text-ok';
+    if (v < 0) return 'border-bad/50 bg-bad/20 text-bad';
+    return 'border-line bg-white/[0.05] text-dim';
+}
+
+// PointsCell edits one team's points for one song. While it has focus it keeps
+// its own draft, so live updates from other checkers do not overwrite typing.
+function PointsCell({ value, row, col, title, onCommit, onMove }) {
+    const [draft, setDraft] = useState(null);
+    const { toast } = useFeedback();
+
+    const commit = () => {
+        if (draft === null) return;
+        const parsed = parsePoints(draft);
+        setDraft(null);
+        if (parsed === undefined) {
+            toast(`«${draft}» — не число`, 'bad');
+            return;
+        }
+        if (parsed === null ? value !== undefined : parsed !== value) onCommit(parsed);
+    };
+
+    return (
+        <input
+            data-cell={`${row}:${col}`}
+            inputMode="decimal"
+            autoComplete="off"
+            title={title}
+            value={draft ?? toInput(value)}
+            onFocus={(e) => {
+                setDraft(toInput(value));
+                e.target.select();
+            }}
+            onChange={(e) => setDraft(e.target.value.replace(/[^0-9.,\-−]/g, ''))}
+            onBlur={commit}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    onMove(row, col, e.shiftKey ? 'prev' : 'next');
+                } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    onMove(row, col, e.key === 'ArrowDown' ? 'down' : 'up');
+                } else if (e.key === 'Escape') {
+                    setDraft(null);
+                    requestAnimationFrame(() => e.target.blur());
+                }
+            }}
+            className={cx(
+                'h-9 w-14 rounded-lg border text-center text-base font-bold tabular-nums outline-none transition-colors',
+                'focus:border-accent focus:bg-white/[0.08] focus:text-ink focus:ring-2 focus:ring-accent/30',
+                cellTone(value),
+            )}
+        />
+    );
+}
 
 function rank(rows) {
     const sorted = [...rows].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, 'uk'));
@@ -107,19 +167,28 @@ function CategoryScoring({ cat, store }) {
         }
     };
 
-    const setBonus = async (team, bonus) => {
-        const prev = project.teams;
-        store.dispatch({ type: 'teams', teams: prev.map((t) => (t.id === team.id ? { ...t, bonus } : t)) });
-        try {
-            await api.patch(`/api/teams/${team.id}`, { bonus });
-        } catch (e) {
-            store.dispatch({ type: 'teams', teams: prev });
-            toast(e.message, 'bad');
-        }
+    const fillZeros = (team) => {
+        for (const it of cat.items) if (scores?.[`${team.id}:${it.id}`] === undefined) put(team, it, 0);
     };
 
-    const fillWrong = (team) => {
-        for (const it of cat.items) if (scores?.[`${team.id}:${it.id}`] === undefined) put(team, it, 0);
+    // Enter walks a team's sheet left to right, then on to the next team.
+    const move = (row, col, dir) => {
+        const rows = project.teams.length;
+        const cols = cat.items.length;
+        let r;
+        let c = col;
+        if (dir === 'down' || dir === 'up') {
+            r = Math.min(Math.max(row + (dir === 'down' ? 1 : -1), 0), rows - 1);
+        } else {
+            const flat = row * cols + col + (dir === 'next' ? 1 : -1);
+            if (flat < 0 || flat >= rows * cols) {
+                document.activeElement?.blur();
+                return;
+            }
+            r = Math.floor(flat / cols);
+            c = flat % cols;
+        }
+        document.querySelector(`[data-cell="${r}:${c}"]`)?.focus();
     };
 
     const done = checkedTeams(cat, project.teams, scores);
@@ -152,14 +221,11 @@ function CategoryScoring({ cat, store }) {
                                     </th>
                                 ))}
                                 <th className="px-3 py-2 text-right font-semibold" title="Бали за цю категорію">Σ</th>
-                                <th className="px-2 py-2 text-center font-semibold" title="Бонусні або штрафні бали команди, йдуть у загальний рахунок">
-                                    Бонус
-                                </th>
                                 <th className="px-2 py-2" />
                             </tr>
                         </thead>
                         <tbody>
-                            {project.teams.map((t) => {
+                            {project.teams.map((t, row) => {
                                 let sum = 0;
                                 let complete = true;
                                 return (
@@ -167,25 +233,20 @@ function CategoryScoring({ cat, store }) {
                                         <td className="sticky left-0 z-10 max-w-[180px] truncate border-t border-line bg-panel px-4 py-1.5 font-semibold">
                                             {t.name}
                                         </td>
-                                        {cat.items.map((it) => {
+                                        {cat.items.map((it, col) => {
                                             const v = scores?.[`${t.id}:${it.id}`];
                                             if (v === undefined) complete = false;
                                             else sum += v;
-                                            const c = CELL[v];
                                             return (
                                                 <td key={it.id} className="border-t border-line px-0.5 py-1.5 text-center">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => put(t, it, NEXT[v])}
-                                                        onContextMenu={(e) => {
-                                                            e.preventDefault();
-                                                            put(t, it, 0.5);
-                                                        }}
-                                                        className={cx('h-9 w-9 rounded-lg border text-base font-bold transition-colors', c.cls)}
-                                                        title={`${it.answer || 'пісня'} — натисніть: ✓ → ✗ → ½`}
-                                                    >
-                                                        {c.label}
-                                                    </button>
+                                                    <PointsCell
+                                                        value={v}
+                                                        row={row}
+                                                        col={col}
+                                                        title={`${t.name} · ${col + 1}. ${it.answer || 'пісня'}`}
+                                                        onCommit={(points) => put(t, it, points)}
+                                                        onMove={move}
+                                                    />
                                                 </td>
                                             );
                                         })}
@@ -194,26 +255,16 @@ function CategoryScoring({ cat, store }) {
                                                 {fmtPoints(sum)}
                                             </span>
                                         </td>
-                                        <td className="border-t border-line px-2">
-                                            <div className="flex items-center justify-center gap-0.5">
-                                                <Button size="sm" variant="ghost" icon={Minus} onClick={() => setBonus(t, (t.bonus || 0) - 0.5)} aria-label="Мінус пів бала" />
-                                                <span className={cx('inline-block w-11 text-center font-mono text-xs tabular-nums', t.bonus ? 'text-accent-2' : 'text-faint')}>
-                                                    {t.bonus > 0 ? '+' : ''}
-                                                    {fmtPoints(t.bonus || 0)}
-                                                </span>
-                                                <Button size="sm" variant="ghost" icon={Plus} onClick={() => setBonus(t, (t.bonus || 0) + 0.5)} aria-label="Плюс пів бала" />
-                                            </div>
-                                        </td>
                                         <td className="border-t border-line px-2 text-right">
                                             <Button
                                                 size="sm"
                                                 variant="ghost"
                                                 className={cx('text-faint', complete && 'invisible')}
-                                                onClick={() => fillWrong(t)}
-                                                title="Позначити решту як неправильні"
-                                                tabIndex={complete ? -1 : 0}
+                                                onClick={() => fillZeros(t)}
+                                                title="Поставити 0 у ще порожні клітинки"
+                                                tabIndex={-1}
                                             >
-                                                решта ✗
+                                                решта 0
                                             </Button>
                                         </td>
                                     </tr>
@@ -223,8 +274,8 @@ function CategoryScoring({ cat, store }) {
                     </table>
                 </div>
                 <p className="m-0 border-t border-line px-4 py-2.5 text-xs text-faint">
-                    Натискання: ✓ правильно → ✗ неправильно → ½ частково. Правий клік — одразу ½. Бонус — загальний для
-                    команди, кроком 0,5.
+                    Впишіть бали за кожну відповідь за правилами цієї категорії — можна дробові (0,5) і відʼємні. Enter —
+                    наступна клітинка, ↑↓ — сусідня команда, Esc — скасувати. Порожня клітинка — ще не перевірено.
                 </p>
             </div>
 
@@ -254,7 +305,7 @@ function Summary({ project, scores }) {
             const perCat = project.categories.map((c) =>
                 c.items.reduce((s, it) => s + (scores?.[`${t.id}:${it.id}`] ?? 0), 0),
             );
-            return { id: t.id, name: t.name, perCat, bonus: t.bonus || 0, total: perCat.reduce((a, b) => a + b, 0) + (t.bonus || 0) };
+            return { id: t.id, name: t.name, perCat, total: perCat.reduce((a, b) => a + b, 0) };
         });
         return rank(list);
     }, [project, scores]);
@@ -271,7 +322,6 @@ function Summary({ project, scores }) {
                                 {i + 1}. <span className="hidden max-w-[10ch] truncate align-bottom md:inline-block">{c.title}</span>
                             </th>
                         ))}
-                        <th className="px-2 py-3 text-right">Бонус</th>
                         <th className="px-4 py-3 text-right">Разом</th>
                     </tr>
                 </thead>
@@ -294,7 +344,6 @@ function Summary({ project, scores }) {
                                     {fmtPoints(p)}
                                 </td>
                             ))}
-                            <td className="border-t border-line px-2 text-right font-mono text-faint">{r.bonus ? fmtPoints(r.bonus) : '—'}</td>
                             <td className="border-t border-line px-4 text-right text-base font-extrabold tabular-nums">{fmtPoints(r.total)}</td>
                         </tr>
                     ))}

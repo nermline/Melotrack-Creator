@@ -70,12 +70,10 @@ func (ss *Sessions) Drop(projectID uint) {
 }
 
 type info struct {
-	Title    string
-	Theme    string
-	JoinCode string
-	RegOpen  bool
-	ThinkMs  int64
-	Teams    []string
+	Title   string
+	Theme   string
+	ThinkMs int64
+	Teams   []string
 }
 
 type Session struct {
@@ -248,7 +246,7 @@ func (s *Session) refreshInfo() {
 	s.db.Model(&store.Team{}).Where("project_id = ?", s.projectID).Order("created_at, id").Pluck("name", &teams)
 	think := int64(p.ThinkSeconds) * 1000
 	s.mu.Lock()
-	s.info = info{Title: p.Title, Theme: p.Theme, JoinCode: p.JoinCode, RegOpen: p.RegistrationOpen, ThinkMs: think, Teams: teams}
+	s.info = info{Title: p.Title, Theme: p.Theme, ThinkMs: think, Teams: teams}
 	s.seq++
 	s.mu.Unlock()
 }
@@ -290,10 +288,10 @@ func LoadProgram(db *gorm.DB, projectID uint) []Category {
 	return out
 }
 
-// LoadLeaderboard sums points per team (plus manual bonus) and ranks them.
+// LoadLeaderboard sums points per team and ranks them.
 func LoadLeaderboard(db *gorm.DB, projectID uint) []Standing {
 	var rows []Standing
-	err := db.Raw(`SELECT t.id AS team_id, t.name AS name, t.bonus + COALESCE(SUM(s.points), 0) AS points
+	err := db.Raw(`SELECT t.id AS team_id, t.name AS name, COALESCE(SUM(s.points), 0) AS points
 		FROM teams t LEFT JOIN scores s ON s.team_id = t.id
 		WHERE t.project_id = ? GROUP BY t.id`, projectID).Scan(&rows).Error
 	if err != nil {
@@ -347,7 +345,6 @@ type View struct {
 
 	Categories []string      `json:"categories,omitempty"`
 	Teams      []string      `json:"teams,omitempty"`
-	JoinCode   string        `json:"join_code,omitempty"`
 	Category   *CategoryView `json:"category,omitempty"`
 	Answers    []AnswerView  `json:"answers,omitempty"`
 	Board      []Standing    `json:"board,omitempty"`
@@ -377,9 +374,6 @@ func (s *Session) View(host bool) View {
 		v.Teams = s.info.Teams
 		for _, c := range e.Cats {
 			v.Categories = append(v.Categories, c.Title)
-		}
-		if s.info.RegOpen {
-			v.JoinCode = s.info.JoinCode
 		}
 	case PhaseResults, PhaseFinished:
 		v.Board = e.Board

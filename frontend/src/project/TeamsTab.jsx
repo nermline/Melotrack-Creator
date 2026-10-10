@@ -1,26 +1,15 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Check, Copy, Plus, QrCode, Trash2, Users } from 'lucide-react';
+import { Plus, Trash2, Users } from 'lucide-react';
 import { api } from '../lib/api';
-import { joinUrl, teams as teamsLabel } from '../lib/format';
-import { Button, Empty, InlineEdit, QR, Toggle } from '../ui';
+import { teams as teamsLabel } from '../lib/format';
+import { Button, Empty, InlineEdit } from '../ui';
 import { useFeedback } from '../ui/feedbackContext';
 
 export default function TeamsTab({ store }) {
     const { project } = store;
     const [name, setName] = useState('');
-    const [copied, setCopied] = useState(false);
     const { toast, confirm } = useFeedback();
-    const url = joinUrl(project.join_code);
-
-    const setOpen = async (open) => {
-        try {
-            const p = await api.patch(`/api/projects/${project.id}`, { registration_open: open });
-            store.dispatch({ type: 'patch', patch: { registration_open: p.registration_open } });
-        } catch (e) {
-            toast(e.message, 'bad');
-        }
-    };
 
     const add = async (e) => {
         e.preventDefault();
@@ -56,18 +45,8 @@ export default function TeamsTab({ store }) {
         }
     };
 
-    const copy = async () => {
-        try {
-            await navigator.clipboard.writeText(url);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-        } catch {
-            toast('Не вдалося скопіювати', 'bad');
-        }
-    };
-
     return (
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="max-w-3xl">
             <section className="min-w-0">
                 <div className="mb-3 flex items-end justify-between gap-3">
                     <div>
@@ -91,8 +70,7 @@ export default function TeamsTab({ store }) {
                 {project.teams.length === 0 ? (
                     <div className="panel">
                         <Empty icon={Users} title="Команд ще немає">
-                            Додайте їх тут або відкрийте реєстрацію — капітани відскановують QR на екрані й впишуть назву
-                            самі.
+                            Додайте назви команд — вони зʼявляться на вітальному екрані й у таблиці оцінювання.
                         </Empty>
                     </div>
                 ) : (
@@ -120,26 +98,6 @@ export default function TeamsTab({ store }) {
                 )}
             </section>
 
-            <aside className="panel self-start p-5">
-                <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 font-bold">
-                        <QrCode size={18} /> Самореєстрація
-                    </div>
-                    <Toggle checked={project.registration_open} onChange={setOpen} />
-                </div>
-                <p className="mt-2 mb-4 text-sm text-dim">
-                    {project.registration_open
-                        ? 'Відкрито: QR-код показується на вітальному екрані, капітани реєструються з телефонів.'
-                        : 'Закрито: додавайте команди вручну або відкрийте реєстрацію перед початком.'}
-                </p>
-                <div className={project.registration_open ? '' : 'opacity-40'}>
-                    <QR value={url} size={200} className="mx-auto" />
-                    <div className="mt-3 flex items-center gap-2">
-                        <input className="field py-1.5 font-mono text-xs" readOnly value={url} onFocus={(e) => e.target.select()} />
-                        <Button size="sm" icon={copied ? Check : Copy} onClick={copy} title="Скопіювати посилання" />
-                    </div>
-                </div>
-            </aside>
         </div>
     );
 }

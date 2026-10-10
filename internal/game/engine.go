@@ -6,7 +6,7 @@ package game
 type Phase string
 
 const (
-	PhaseWelcome   Phase = "welcome"   // project title, registered teams, join QR
+	PhaseWelcome   Phase = "welcome"   // project title, categories and teams
 	PhaseCategory  Phase = "category"  // category title card (timed)
 	PhaseCountdown Phase = "countdown" // 3-2-1 before the first song (timed)
 	PhasePlaying   Phase = "playing"   // a clip plays (timed by clip length)

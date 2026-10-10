@@ -10,7 +10,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -166,37 +165,41 @@ func TestContentFlow(t *testing.T) {
 		t.Fatalf("media map: %v", proj["media"])
 	}
 
-	// Teams and scoring.
+	// Teams and scoring: each category has its own rules, so the organiser
+	// types any number of points per answer; null clears a cell.
+	iid2 := id(items[1].(map[string]any))
 	t1 := id(e.do("POST", fmt.Sprintf("/api/projects/%d/teams", pid), map[string]string{"name": "Бітли"}, http.StatusCreated))
 	t2 := id(e.do("POST", fmt.Sprintf("/api/projects/%d/teams", pid), map[string]string{"name": "Роллінги"}, http.StatusCreated))
 	e.do("POST", fmt.Sprintf("/api/projects/%d/teams", pid), map[string]string{"name": "бітли"}, http.StatusConflict)
-	e.do("PUT", "/api/scores", map[string]any{"team_id": t1, "item_id": iid, "points": 1}, http.StatusOK)
-	e.do("PUT", "/api/scores", map[string]any{"team_id": t1, "item_id": iid, "points": 0.5}, http.StatusOK)
-	e.do("PUT", "/api/scores", map[string]any{"team_id": t2, "item_id": iid, "points": 1}, http.StatusOK)
-	e.do("PUT", "/api/scores", map[string]any{"team_id": t2, "item_id": iid, "points": 11}, http.StatusBadRequest)
-	e.do("PATCH", fmt.Sprintf("/api/teams/%d", t1), map[string]any{"bonus": 2}, http.StatusOK)
-	if s := e.list(fmt.Sprintf("/api/projects/%d/scores", pid)); len(s) != 2 {
+	e.do("PUT", "/api/scores", map[string]any{"team_id": t1, "item_id": iid, "points": 3}, http.StatusOK)
+	got := e.do("PUT", "/api/scores", map[string]any{"team_id": t1, "item_id": iid, "points": 2.255}, http.StatusOK)
+	if got["points"].(float64) != 2.26 {
+		t.Fatalf("points are kept to two decimals: %v", got)
+	}
+	e.do("PUT", "/api/scores", map[string]any{"team_id": t2, "item_id": iid, "points": 4}, http.StatusOK)
+	e.do("PUT", "/api/scores", map[string]any{"team_id": t2, "item_id": iid2, "points": -1.5}, http.StatusOK)
+	e.do("PUT", "/api/scores", map[string]any{"team_id": t1, "item_id": iid2, "points": 1}, http.StatusOK)
+	cleared := e.do("PUT", "/api/scores", map[string]any{"team_id": t1, "item_id": iid2, "points": nil}, http.StatusOK)
+	if cleared["points"] != nil {
+		t.Fatalf("cleared cell must report null: %v", cleared)
+	}
+	e.do("PUT", "/api/scores", map[string]any{"team_id": t2, "item_id": iid, "points": 101}, http.StatusBadRequest)
+	if s := e.list(fmt.Sprintf("/api/projects/%d/scores", pid)); len(s) != 3 {
 		t.Fatalf("scores: %v", s)
 	}
-
-	// Public registration is closed until opened.
-	code := proj["join_code"].(string)
-	e.do("POST", "/api/public/join/"+code, map[string]string{"name": "Гості"}, http.StatusForbidden)
-	e.do("PATCH", fmt.Sprintf("/api/projects/%d", pid), map[string]any{"registration_open": true}, http.StatusOK)
-	anon := &http.Client{}
-	resp, _ := anon.Post(e.srv.URL+"/api/public/join/"+code, "application/json", strings.NewReader(`{"name":"Гості"}`))
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("public join: %d", resp.StatusCode)
+	team := e.do("PATCH", fmt.Sprintf("/api/teams/%d", t1), map[string]any{"bonus": 2, "name": "Бітлз"}, http.StatusOK)
+	if _, has := team["bonus"]; has || team["name"] != "Бітлз" {
+		t.Fatalf("teams have no bonus any more: %v", team)
 	}
-	resp, _ = anon.Post(e.srv.URL+"/api/public/join/"+code, "application/json", strings.NewReader(`{"name":"ГОСТІ"}`))
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("duplicate public join: %d", resp.StatusCode)
+	if _, has := e.do("GET", fmt.Sprintf("/api/projects/%d", pid), nil, http.StatusOK)["join_code"]; has {
+		t.Fatal("self-registration was removed")
 	}
+	e.do("GET", "/api/public/join/abc", nil, http.StatusNotFound)
 
 	// Live show over WebSocket.
 	ws := e.dialLive(pid, "remote")
 	v := readShow(t, ws)
-	if v["phase"] != "welcome" || len(v["teams"].([]any)) != 3 {
+	if v["phase"] != "welcome" || len(v["teams"].([]any)) != 2 || v["join_code"] != nil {
 		t.Fatalf("welcome view: %v", v)
 	}
 	ws.WriteJSON(map[string]any{"type": "cmd", "action": "results"})
@@ -205,7 +208,8 @@ func TestContentFlow(t *testing.T) {
 	v = waitPhase(t, ws, "results")
 	board := v["board"].([]any)
 	top := board[0].(map[string]any)
-	if top["name"] != "Бітли" || top["points"].(float64) != 2.5 {
+	// Роллінги: 4 + (−1.5) = 2.5; Бітлз: 2.26 (the cleared cell does not count).
+	if top["name"] != "Роллінги" || top["points"].(float64) != 2.5 || board[1].(map[string]any)["points"].(float64) != 2.26 {
 		t.Fatalf("leaderboard: %v", board)
 	}
 

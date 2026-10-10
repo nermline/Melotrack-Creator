@@ -121,6 +121,23 @@ CREATE TABLE scores (
 );
 CREATE INDEX idx_scores_item ON scores(item_id);
 `,
+	// 2: no team self-registration and no team bonuses. SQLite cannot drop a
+	// UNIQUE column in place, so the projects table is rebuilt.
+	`
+CREATE TABLE projects_v2 (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	created_at DATETIME, updated_at DATETIME,
+	title TEXT NOT NULL UNIQUE,
+	theme TEXT NOT NULL DEFAULT 'neon',
+	think_seconds INTEGER NOT NULL DEFAULT 10,
+	game_state TEXT NOT NULL DEFAULT ''
+);
+INSERT INTO projects_v2 (id, created_at, updated_at, title, theme, think_seconds, game_state)
+	SELECT id, created_at, updated_at, title, theme, think_seconds, game_state FROM projects;
+DROP TABLE projects;
+ALTER TABLE projects_v2 RENAME TO projects;
+ALTER TABLE teams DROP COLUMN bonus;
+`,
 }
 
 func migrate(db *gorm.DB, path string, legacy LegacyImport) error {
@@ -188,8 +205,8 @@ func splitSQL(s string) []string {
 	return out
 }
 
-// NewJoinCode returns a short, URL-safe code without ambiguous characters.
-func NewJoinCode() string {
+// RandomCode returns a short, URL-safe random code without ambiguous characters.
+func RandomCode() string {
 	const alphabet = "abcdefghjkmnpqrstuvwxyz23456789"
 	b := make([]byte, 6)
 	_, _ = rand.Read(b)

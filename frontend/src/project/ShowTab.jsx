@@ -175,7 +175,7 @@ export default function ShowTab({ store }) {
                             {checks.noAnswer === 0 ? 'Відповіді заповнені' : `Без відповіді: ${songs(checks.noAnswer)}`}
                         </Check2>
                         <Check2 ok={project.teams.length > 0} warn>
-                            {project.teams.length > 0 ? `Зареєстровано ${teams(project.teams.length)}` : 'Команд ще немає (можна зареєструвати на місці)'}
+                            {project.teams.length > 0 ? `${teams(project.teams.length)}` : 'Команд ще немає'}
                         </Check2>
                     </ul>
                     {system && (

@@ -4,8 +4,7 @@ import confetti from 'canvas-confetti';
 import '@fontsource-variable/playfair-display';
 import '@fontsource-variable/oswald';
 import { remainingMs, useTick } from '../lib/live';
-import { fmtPoints, joinUrl, plural, points, songs } from '../lib/format';
-import { QR } from '../ui';
+import { fmtPoints, plural, points, songs } from '../lib/format';
 import { Backdrop, PlayingVisual, RingTimer } from './visuals';
 import Answers from './Answers';
 import { cues } from './sound';
@@ -188,66 +187,46 @@ function Phase({ view, sec, frac, preview, videoOn }) {
 
 function Welcome({ view }) {
     const teams = view.teams || [];
-    const join = view.join_code;
     return (
-        <div className="layer" style={{ flexDirection: 'row', gap: '6cqw', alignItems: 'center' }}>
-            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: join ? 'flex-start' : 'center', textAlign: join ? 'left' : 'center' }}>
-                <motion.div className="eyebrow-s" {...rise(0)}>
-                    Музичний квіз
-                </motion.div>
-                <motion.div className="display title-xl" style={{ marginTop: '2cqmin' }} {...rise(0.1)}>
-                    {view.title}
-                </motion.div>
-                {view.categories?.length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.2cqmin', marginTop: '4cqmin', justifyContent: join ? 'flex-start' : 'center' }}>
-                        {view.categories.map((c, i) => (
-                            <motion.span key={c + i} className="pill" {...rise(0.3 + i * 0.06)}>
-                                {c}
-                            </motion.span>
-                        ))}
+        <div className="layer">
+            <motion.div className="eyebrow-s" {...rise(0)}>
+                Музичний квіз
+            </motion.div>
+            <motion.div className="display title-xl" style={{ marginTop: '2cqmin' }} {...rise(0.1)}>
+                {view.title}
+            </motion.div>
+            {view.categories?.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.2cqmin', marginTop: '4cqmin', justifyContent: 'center' }}>
+                    {view.categories.map((c, i) => (
+                        <motion.span key={c + i} className="pill" {...rise(0.3 + i * 0.06)}>
+                            {c}
+                        </motion.span>
+                    ))}
+                </div>
+            )}
+            {teams.length > 0 && (
+                <div style={{ marginTop: '5cqmin', width: '100%' }}>
+                    <div className="sub" style={{ marginBottom: '1.5cqmin' }}>
+                        {teams.length} {plural(teams.length, 'команда', 'команди', 'команд')} вже з нами
                     </div>
-                )}
-                {teams.length > 0 && (
-                    <div style={{ marginTop: '5cqmin', width: '100%' }}>
-                        <div className="sub" style={{ marginBottom: '1.5cqmin' }}>
-                            {teams.length} {plural(teams.length, 'команда', 'команди', 'команд')} вже з нами
-                        </div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1cqmin', justifyContent: join ? 'flex-start' : 'center', maxHeight: '22cqh', overflow: 'hidden' }}>
-                            <AnimatePresence>
-                                {teams.map((t) => (
-                                    <motion.span
-                                        key={t}
-                                        layout
-                                        className="pill"
-                                        style={{ color: 'var(--a2)' }}
-                                        initial={{ opacity: 0, scale: 0.5 }}
-                                        animate={{ opacity: 1, scale: 1 }}
-                                        transition={{ type: 'spring', stiffness: 300, damping: 18 }}
-                                    >
-                                        {t}
-                                    </motion.span>
-                                ))}
-                            </AnimatePresence>
-                        </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1cqmin', justifyContent: 'center', maxHeight: '22cqh', overflow: 'hidden' }}>
+                        <AnimatePresence>
+                            {teams.map((t) => (
+                                <motion.span
+                                    key={t}
+                                    layout
+                                    className="pill"
+                                    style={{ color: 'var(--a2)' }}
+                                    initial={{ opacity: 0, scale: 0.5 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    transition={{ type: 'spring', stiffness: 300, damping: 18 }}
+                                >
+                                    {t}
+                                </motion.span>
+                            ))}
+                        </AnimatePresence>
                     </div>
-                )}
-            </div>
-            {join && (
-                <motion.div
-                    className="card"
-                    style={{ padding: '3cqmin', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2cqmin', flexShrink: 0 }}
-                    {...rise(0.4)}
-                >
-                    <div className="display" style={{ fontSize: '4.4cqmin' }}>
-                        Реєстрація команд
-                    </div>
-                    <div style={{ width: '34cqmin', height: '34cqmin' }}>
-                        <QR value={joinUrl(join)} size="100%" dark="#0b0b12" />
-                    </div>
-                    <div className="sub" style={{ fontFamily: 'ui-monospace, monospace', fontSize: '3cqmin' }}>
-                        {joinUrl(join).replace(/^https?:\/\//, '')}
-                    </div>
-                </motion.div>
+                </div>
             )}
             <motion.div
                 className="sub"

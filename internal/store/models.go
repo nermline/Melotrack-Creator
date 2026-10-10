@@ -9,14 +9,12 @@ import (
 var Themes = []string{"neon", "vinyl", "stage"}
 
 type Project struct {
-	ID               uint `gorm:"primaryKey"`
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-	Title            string
-	Theme            string
-	ThinkSeconds     int
-	RegistrationOpen bool
-	JoinCode         string
+	ID           uint `gorm:"primaryKey"`
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	Title        string
+	Theme        string
+	ThinkSeconds int
 	// GameState is the persisted show position (JSON), so a restart does not lose it.
 	GameState string
 
@@ -123,7 +121,6 @@ type Team struct {
 	ProjectID uint
 	Name      string
 	NameKey   string // lower-cased name; SQLite's NOCASE ignores Cyrillic
-	Bonus     float64
 }
 
 // TeamKey normalises a team name for the uniqueness check.

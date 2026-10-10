@@ -66,7 +66,7 @@ func TestLegacyImport(t *testing.T) {
 	}
 
 	var p Project
-	if err := db.First(&p, 1).Error; err != nil || p.Title != "Мелотрек" || p.JoinCode == "" || p.Theme != "neon" {
+	if err := db.First(&p, 1).Error; err != nil || p.Title != "Мелотрек" || p.Theme != "neon" {
 		t.Fatalf("project = %+v, err %v", p, err)
 	}
 	var items []Item
@@ -103,11 +103,11 @@ func TestFreshDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := Project{Title: "A", Theme: "neon", ThinkSeconds: 10, JoinCode: NewJoinCode()}
+	p := Project{Title: "A", Theme: "neon", ThinkSeconds: 10}
 	if err := db.Create(&p).Error; err != nil {
 		t.Fatal(err)
 	}
-	dup := Project{Title: "A", Theme: "neon", ThinkSeconds: 10, JoinCode: NewJoinCode()}
+	dup := Project{Title: "A", Theme: "neon", ThinkSeconds: 10}
 	if err := db.Create(&dup).Error; !IsUniqueViolation(err) {
 		t.Fatalf("expected unique violation, got %v", err)
 	}

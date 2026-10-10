@@ -26,11 +26,10 @@ type Server struct {
 	yt    *media.YtDlp
 	hub   *live.Hub
 	games *game.Sessions
-	joins *joinLimiter
 }
 
 func NewServer(db *gorm.DB, cfg *config.Config, a *auth.Auth, m *media.Manager, yt *media.YtDlp, hub *live.Hub, games *game.Sessions) *Server {
-	s := &Server{db: db, cfg: cfg, auth: a, media: m, yt: yt, hub: hub, games: games, joins: newJoinLimiter()}
+	s := &Server{db: db, cfg: cfg, auth: a, media: m, yt: yt, hub: hub, games: games}
 	m.SetNotifier(s)
 	games.OnChange(hub.PublishShow)
 	hub.SetHandlers(s.showView, s.showCommand)
@@ -48,8 +47,6 @@ func (s *Server) Router() *gin.Engine {
 	api.GET("/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
 	api.POST("/login", s.login)
 	api.POST("/logout", s.logout)
-	api.GET("/public/join/:code", s.joinInfo)
-	api.POST("/public/join/:code", s.joinRegister)
 
 	priv := api.Group("", s.auth.Middleware())
 	priv.GET("/session", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })

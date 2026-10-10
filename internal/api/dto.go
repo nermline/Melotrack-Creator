@@ -103,34 +103,31 @@ type categoryDTO struct {
 type teamDTO struct {
 	ID        uint      `json:"id"`
 	Name      string    `json:"name"`
-	Bonus     float64   `json:"bonus"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
 func toTeamDTO(t *store.Team) teamDTO {
-	return teamDTO{ID: t.ID, Name: t.Name, Bonus: t.Bonus, CreatedAt: t.CreatedAt}
+	return teamDTO{ID: t.ID, Name: t.Name, CreatedAt: t.CreatedAt}
 }
 
 type projectDTO struct {
-	ID               uint                `json:"id"`
-	Title            string              `json:"title"`
-	CreatedAt        time.Time           `json:"created_at"`
-	Theme            string              `json:"theme"`
-	ThinkSeconds     int                 `json:"think_seconds"`
-	RegistrationOpen bool                `json:"registration_open"`
-	JoinCode         string              `json:"join_code"`
-	Categories       []categoryDTO       `json:"categories"`
-	Media            map[string]mediaDTO `json:"media"`
-	Teams            []teamDTO           `json:"teams"`
+	ID           uint                `json:"id"`
+	Title        string              `json:"title"`
+	CreatedAt    time.Time           `json:"created_at"`
+	Theme        string              `json:"theme"`
+	ThinkSeconds int                 `json:"think_seconds"`
+	Categories   []categoryDTO       `json:"categories"`
+	Media        map[string]mediaDTO `json:"media"`
+	Teams        []teamDTO           `json:"teams"`
 }
 
 func toProjectDTO(p *store.Project) projectDTO {
 	d := projectDTO{
 		ID: p.ID, Title: p.Title, CreatedAt: p.CreatedAt, Theme: p.Theme,
-		ThinkSeconds: p.ThinkSeconds, RegistrationOpen: p.RegistrationOpen, JoinCode: p.JoinCode,
-		Categories: make([]categoryDTO, 0, len(p.Categories)),
-		Media:      map[string]mediaDTO{},
-		Teams:      make([]teamDTO, 0, len(p.Teams)),
+		ThinkSeconds: p.ThinkSeconds,
+		Categories:   make([]categoryDTO, 0, len(p.Categories)),
+		Media:        map[string]mediaDTO{},
+		Teams:        make([]teamDTO, 0, len(p.Teams)),
 	}
 	for _, c := range p.Categories {
 		cd := categoryDTO{ID: c.ID, Title: c.Title, Position: c.Position, Items: make([]itemDTO, 0, len(c.Items))}

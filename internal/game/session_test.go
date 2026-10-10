@@ -12,7 +12,7 @@ func TestRestoreSavedPosition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := store.Project{Title: "P", Theme: "neon", ThinkSeconds: 10, JoinCode: store.NewJoinCode()}
+	p := store.Project{Title: "P", Theme: "neon", ThinkSeconds: 10}
 	db.Omit("Categories", "Teams").Create(&p)
 	c := store.Category{ProjectID: p.ID, Title: "C"}
 	db.Omit("Items").Create(&c)

@@ -56,7 +56,9 @@ function reducer(state, a) {
             return { ...state, scores: a.scores };
         case 'score': {
             const scores = { ...(state.scores || {}) };
-            scores[`${a.team_id}:${a.item_id}`] = a.points;
+            const key = `${a.team_id}:${a.item_id}`;
+            if (a.points === null || a.points === undefined) delete scores[key];
+            else scores[key] = a.points;
             return { ...state, scores };
         }
         default:
