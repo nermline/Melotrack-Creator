@@ -22,17 +22,24 @@ const (
 	RoleEditor Role = "editor" // content editor / scoring: receives changes, may control
 )
 
+// Every connection belongs to a project and to one show of it: session ""
+// is the real show, any other value a private rehearsal.
+
 // ViewFunc renders the show state for a role; the hub marshals it once per role.
-type ViewFunc func(projectID uint, host bool) (any, bool)
+type ViewFunc func(projectID uint, session string, host bool) (any, bool)
 
 // CommandFunc handles a show command from a remote.
-type CommandFunc func(projectID uint, action string, value float64)
+type CommandFunc func(projectID uint, session, action string, value float64)
+
+// IdleFunc is told when the last device of a show disconnects.
+type IdleFunc func(projectID uint, session string)
 
 type Hub struct {
 	mu      sync.Mutex
 	rooms   map[uint]map[*client]struct{}
 	view    ViewFunc
 	command CommandFunc
+	idle    IdleFunc
 	origins []string
 
 	upgrader websocket.Upgrader
@@ -48,8 +55,8 @@ func NewHub(allowedOrigins []string) *Hub {
 	return h
 }
 
-func (h *Hub) SetHandlers(view ViewFunc, command CommandFunc) {
-	h.view, h.command = view, command
+func (h *Hub) SetHandlers(view ViewFunc, command CommandFunc, idle IdleFunc) {
+	h.view, h.command, h.idle = view, command, idle
 }
 
 // checkOrigin allows same-host pages and explicitly configured origins (the dev server).
@@ -70,18 +77,19 @@ func (h *Hub) checkOrigin(r *http.Request) bool {
 
 type client struct {
 	projectID uint
+	session   string
 	role      Role
 	conn      *websocket.Conn
 	send      chan []byte
 }
 
 // Serve upgrades the request and keeps the connection until it closes.
-func (h *Hub) Serve(w http.ResponseWriter, r *http.Request, projectID uint, role Role) {
+func (h *Hub) Serve(w http.ResponseWriter, r *http.Request, projectID uint, session string, role Role) {
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}
-	c := &client{projectID: projectID, role: role, conn: conn, send: make(chan []byte, 64)}
+	c := &client{projectID: projectID, session: session, role: role, conn: conn, send: make(chan []byte, 64)}
 	h.mu.Lock()
 	if h.rooms[projectID] == nil {
 		h.rooms[projectID] = map[*client]struct{}{}
@@ -90,29 +98,46 @@ func (h *Hub) Serve(w http.ResponseWriter, r *http.Request, projectID uint, role
 	h.mu.Unlock()
 
 	if h.view != nil {
-		if v, ok := h.view(projectID, role != RoleScreen); ok {
+		if v, ok := h.view(projectID, session, role != RoleScreen); ok {
 			if data, err := json.Marshal(envelope{Type: "show", Data: v}); err == nil {
 				c.send <- data
 			}
 		}
 	}
 	go h.writePump(c)
-	go h.PublishShow(projectID) // remotes show which devices are connected
+	go h.PublishShow(projectID, session) // remotes show which devices are connected
 	h.readPump(c)
 }
 
 func (h *Hub) remove(c *client) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
-	if room, ok := h.rooms[c.projectID]; ok {
-		if _, ok := room[c]; ok {
-			delete(room, c)
-			close(c.send)
-		}
-		if len(room) == 0 {
-			delete(h.rooms, c.projectID)
+	room, ok := h.rooms[c.projectID]
+	if !ok {
+		h.mu.Unlock()
+		return
+	}
+	if _, ok := room[c]; ok {
+		delete(room, c)
+		close(c.send)
+	}
+	if len(room) == 0 {
+		delete(h.rooms, c.projectID)
+	}
+	empty := h.countLocked(c.projectID, c.session) == 0
+	h.mu.Unlock()
+	if empty && h.idle != nil {
+		h.idle(c.projectID, c.session)
+	}
+}
+
+func (h *Hub) countLocked(projectID uint, session string) int {
+	n := 0
+	for c := range h.rooms[projectID] {
+		if c.session == session {
+			n++
 		}
 	}
+	return n
 }
 
 const (
@@ -131,7 +156,7 @@ func (h *Hub) readPump(c *client) {
 	defer func() {
 		h.remove(c)
 		c.conn.Close()
-		go h.PublishShow(c.projectID)
+		go h.PublishShow(c.projectID, c.session)
 	}()
 	c.conn.SetReadLimit(4096)
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
@@ -146,7 +171,7 @@ func (h *Hub) readPump(c *client) {
 		switch msg.Type {
 		case "cmd":
 			if c.role != RoleScreen && h.command != nil {
-				h.command(c.projectID, msg.Action, msg.Value)
+				h.command(c.projectID, c.session, msg.Action, msg.Value)
 			}
 		case "ping":
 			h.sendTo(c, envelope{Type: "pong", Data: time.Now().UnixMilli()})
@@ -224,27 +249,30 @@ func (h *Hub) Publish(projectID uint, typ string, data any) {
 	}
 }
 
-// PublishShow pushes the current show state, rendered per role.
-func (h *Hub) PublishShow(projectID uint) {
+// PublishShow pushes the current state of one show to its devices, rendered per role.
+func (h *Hub) PublishShow(projectID uint, session string) {
 	if h.view == nil {
 		return
 	}
 	h.mu.Lock()
-	n := len(h.rooms[projectID])
+	n := h.countLocked(projectID, session)
 	h.mu.Unlock()
 	if n == 0 {
 		return
 	}
 	var screen, host []byte
-	if v, ok := h.view(projectID, false); ok {
+	if v, ok := h.view(projectID, session, false); ok {
 		screen, _ = json.Marshal(envelope{Type: "show", Data: v})
 	}
-	if v, ok := h.view(projectID, true); ok {
+	if v, ok := h.view(projectID, session, true); ok {
 		host, _ = json.Marshal(envelope{Type: "show", Data: v})
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for c := range h.rooms[projectID] {
+		if c.session != session {
+			continue
+		}
 		if c.role == RoleScreen {
 			if screen != nil {
 				trySend(c, screen)
@@ -255,13 +283,15 @@ func (h *Hub) PublishShow(projectID uint) {
 	}
 }
 
-// Connected lists how many devices of each role are connected (shown to the remote).
-func (h *Hub) Connected(projectID uint) map[Role]int {
+// Connected lists how many devices of each role follow a show (shown to the remote).
+func (h *Hub) Connected(projectID uint, session string) map[Role]int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	out := map[Role]int{}
 	for c := range h.rooms[projectID] {
-		out[c.role]++
+		if c.session == session {
+			out[c.role]++
+		}
 	}
 	return out
 }

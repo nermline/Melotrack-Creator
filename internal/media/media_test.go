@@ -154,3 +154,60 @@ func TestParseProgress(t *testing.T) {
 		t.Fatal("unknown totals must be ignored")
 	}
 }
+
+// legacyKey is ClipKey(1, 1, {Start 1, End 16, fit, 720p}) as computed by the
+// release before reverse existed.
+const legacyKey = "40c830648213"
+
+func TestClipKeyIsStableForExistingClips(t *testing.T) {
+	base := ClipSpec{Start: 1, End: 16, Frame: "fit", Height: 720}
+	// Computed with the previous release: a non-reversed clip keeps its key,
+	// so upgrading does not re-cut every song.
+	if got := ClipKey(1, 1, base); got != legacyKey {
+		t.Fatalf("key changed: %s, want %s", got, legacyKey)
+	}
+	rev := base
+	rev.Reverse = true
+	if ClipKey(1, 1, rev) == ClipKey(1, 1, base) {
+		t.Fatal("reversing must change the key")
+	}
+}
+
+func TestClipArgsReverse(t *testing.T) {
+	spec := ClipSpec{Source: "in.mp4", Out: "out.mp4", Start: 10, End: 25, Frame: "fit",
+		HasVideo: true, HasAudio: true, Height: 720, Reverse: true}
+	a := ClipArgs(spec)
+	if !strings.HasPrefix(arg(a, "-af"), "areverse,loudnorm") {
+		t.Fatalf("af = %s", arg(a, "-af"))
+	}
+	// The input itself is limited to the fragment, so areverse never buffers the rest of the song.
+	i := slices.Index(a, "-i")
+	if !slices.Contains(a[:i], "-t") {
+		t.Fatalf("-t must come before -i: %v", a)
+	}
+	spec.Reverse = false
+	if strings.Contains(arg(ClipArgs(spec), "-af"), "areverse") {
+		t.Fatal("areverse only when asked")
+	}
+}
+
+func TestParseEBUR128(t *testing.T) {
+	in := `  Duration: 00:00:03.00
+[Parsed_ebur128_0 @ 0x1] t: 0.0999773  TARGET:-23 LUFS    M:-120.7 S:-120.7     I: -70.0 LUFS       LRA:   0.0 LU
+[Parsed_ebur128_0 @ 0x1] t: 0.499977   TARGET:-23 LUFS    M:-120.7 S:-120.7     I: -70.0 LUFS       LRA:   0.0 LU
+[Parsed_ebur128_0 @ 0x1] t: 1.199977   TARGET:-23 LUFS    M: -20.0 S: -20.0     I: -20.0 LUFS       LRA:   0.0 LU
+[Parsed_ebur128_0 @ 0x1] t: 1.499977   TARGET:-23 LUFS    M: -20.0 S: -20.0     I: -20.0 LUFS       LRA:   0.0 LU
+[Parsed_ebur128_0 @ 0x1] t: 2.099977   TARGET:-23 LUFS    M: -10.0 S: -12.0     I: -14.0 LUFS       LRA:   1.0 LU
+  Summary:
+    I:         -14.0 LUFS`
+	got := parseEBUR128(strings.NewReader(in))
+	want := []float64{-70, -20, -10}
+	if len(got) != len(want) {
+		t.Fatalf("got %v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -73,7 +74,41 @@ func (s *Server) system(c *gin.Context) {
 		"cookies":        s.cfg.YtDlpCookies != "",
 		"clip_height":    s.cfg.ClipHeight,
 		"queue":          gin.H{"downloads": downloads, "renders": renders},
+		"workers":        s.workerStatuses(ctx),
 	})
+}
+
+type workerStatus struct {
+	Role         string `json:"role"`
+	URL          string `json:"url"`
+	Online       bool   `json:"online"`
+	Name         string `json:"name,omitempty"`
+	YtDlpVersion string `json:"ytdlp_version,omitempty"`
+	Error        string `json:"error,omitempty"`
+}
+
+// workerStatuses pings the remote workers (cached for a few seconds, the show tab polls).
+func (s *Server) workerStatuses(ctx context.Context) []workerStatus {
+	s.statusMu.Lock()
+	defer s.statusMu.Unlock()
+	if time.Since(s.statusAt) < 8*time.Second && s.statusVal != nil {
+		return s.statusVal
+	}
+	out := make([]workerStatus, 0, len(s.remotes))
+	for _, r := range s.remotes {
+		st := workerStatus{Role: r.Role, URL: r.Client.URL()}
+		hctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		h, err := r.Client.Health(hctx)
+		cancel()
+		if err != nil {
+			st.Error = err.Error()
+		} else {
+			st.Online, st.Name, st.YtDlpVersion = true, h.Name, h.YtDlpVersion
+		}
+		out = append(out, st)
+	}
+	s.statusAt, s.statusVal = time.Now(), out
+	return out
 }
 
 // ---- live connection and the show ----
@@ -90,7 +125,26 @@ func (s *Server) serveLive(c *gin.Context) {
 		badRequest(c, "role має бути screen, remote або editor")
 		return
 	}
-	s.hub.Serve(c.Writer, c.Request, pid, role)
+	// Empty = the real show; anything else is the caller's private rehearsal.
+	session := c.Query("session")
+	if session != "" && !sessionRe.MatchString(session) {
+		badRequest(c, "Некоректний ідентифікатор показу")
+		return
+	}
+	s.hub.Serve(c.Writer, c.Request, pid, session, role)
+}
+
+var sessionRe = regexp.MustCompile(`^[a-z0-9-]{4,40}$`)
+
+// rehearsalIdle is how long a rehearsal survives with nobody watching it
+// (long enough for a page reload or a phone waking up).
+const rehearsalIdle = 10 * time.Minute
+
+func (s *Server) showIdle(projectID uint, session string) {
+	key := game.Key{Project: projectID, Session: session}
+	s.games.ReleaseWhenIdle(key, rehearsalIdle, func() bool {
+		return len(s.hub.Connected(projectID, session)) == 0
+	})
 }
 
 type showView struct {
@@ -98,20 +152,20 @@ type showView struct {
 	Devices map[live.Role]int `json:"devices,omitempty"`
 }
 
-func (s *Server) showView(projectID uint, host bool) (any, bool) {
-	sess, err := s.games.Get(projectID)
+func (s *Server) showView(projectID uint, session string, host bool) (any, bool) {
+	sess, err := s.games.Get(game.Key{Project: projectID, Session: session})
 	if err != nil {
 		return nil, false
 	}
 	v := showView{View: sess.View(host)}
 	if host {
-		v.Devices = s.hub.Connected(projectID)
+		v.Devices = s.hub.Connected(projectID, session)
 	}
 	return v, true
 }
 
-func (s *Server) showCommand(projectID uint, action string, value float64) {
-	sess, err := s.games.Get(projectID)
+func (s *Server) showCommand(projectID uint, session, action string, value float64) {
+	sess, err := s.games.Get(game.Key{Project: projectID, Session: session})
 	if err != nil {
 		return
 	}

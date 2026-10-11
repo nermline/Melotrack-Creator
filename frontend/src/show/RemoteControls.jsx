@@ -73,7 +73,8 @@ function BigButton({ icon: Icon, children, onClick, disabled, className, title }
 
 // RemoteControls is the operator's panel: current state, the answer the host
 // may need, and every command. Keyboard: Space/→ next, ← back, P pause, R replay.
-export default function RemoteControls({ view, offset, command, status }) {
+// rehearsal: controls a private rehearsal, which has no projector of its own.
+export default function RemoteControls({ view, offset, command, status, rehearsal = false }) {
     const [more, setMore] = useState(false);
     const { confirm } = useFeedback();
     const timed = !!view?.timer?.duration_ms;
@@ -100,7 +101,8 @@ export default function RemoteControls({ view, offset, command, status }) {
     }, [command, phase]);
 
     const reset = async () => {
-        if (await confirm({ title: 'Скинути показ?', message: 'Показ повернеться на вітальний екран. Бали команд не зміняться.', confirmLabel: 'Скинути', danger: true }))
+        const message = rehearsal ? 'Репетиція повернеться на вітальний екран.' : 'Показ повернеться на вітальний екран. Бали команд не зміняться.';
+        if (await confirm({ title: rehearsal ? 'Почати репетицію спочатку?' : 'Скинути показ?', message, confirmLabel: 'Скинути', danger: true }))
             command('reset');
     };
     const toResults = async () => {
@@ -114,10 +116,14 @@ export default function RemoteControls({ view, offset, command, status }) {
         <div className="flex flex-col gap-3">
             <div className="panel p-4">
                 <div className="flex items-center justify-between gap-2 text-xs text-dim">
-                    <span className="inline-flex items-center gap-1.5">
-                        <Monitor size={14} className={screens ? 'text-ok' : 'text-bad'} />
-                        {screens ? `екран підключено${screens > 1 ? ` (${screens})` : ''}` : 'екран не підключено'}
-                    </span>
+                    {rehearsal ? (
+                        <span>Бачите лише ви — справжній екран не зміниться</span>
+                    ) : (
+                        <span className="inline-flex items-center gap-1.5">
+                            <Monitor size={14} className={screens ? 'text-ok' : 'text-bad'} />
+                            {screens ? `екран підключено${screens > 1 ? ` (${screens})` : ''}` : 'екран не підключено'}
+                        </span>
+                    )}
                     {status !== 'online' && <span className="text-warn">звʼязок: {status}</span>}
                 </div>
                 <div className="mt-2 font-display text-lg font-bold">{view ? PHASE_LABEL[phase] : '…'}</div>
@@ -228,7 +234,7 @@ export default function RemoteControls({ view, offset, command, status }) {
                                 <Trophy size={14} /> Результати
                             </button>
                             <button type="button" onClick={reset} className="btn btn-sm btn-danger">
-                                <RotateCcw size={14} /> Скинути показ
+                                <RotateCcw size={14} /> {rehearsal ? 'Спочатку' : 'Скинути показ'}
                             </button>
                         </div>
                     </div>

@@ -71,6 +71,8 @@ type itemDTO struct {
 	Start      float64 `json:"start"`
 	End        float64 `json:"end"`
 	GainDB     float64 `json:"gain_db"`
+	Reverse    bool    `json:"reverse"`
+	Configured bool    `json:"configured"`
 	Frame      string  `json:"frame"`
 	Crop       *rect   `json:"crop"`
 	ImageURL   string  `json:"image_url,omitempty"`    // uploaded picture
@@ -83,6 +85,7 @@ func toItemDTO(it *store.Item) itemDTO {
 		ID: it.ID, CategoryID: it.CategoryID, Position: it.Position, MediaID: it.MediaID,
 		Answer: it.Answer, ShowVideo: it.ShowVideo,
 		Start: it.StartSec, End: it.EndSec, GainDB: it.GainDB, Frame: it.Frame,
+		Reverse: it.Reverse, Configured: it.Configured,
 		ImageURL:  media.ImageURL(it.ImageFile),
 		AnswerURL: media.AnswerImageURL(it, &it.Media),
 		Clip:      clipDTO{Status: it.ClipStatus, URL: media.ClipURL(it.ClipFile), Error: it.ClipError},
@@ -94,10 +97,12 @@ func toItemDTO(it *store.Item) itemDTO {
 }
 
 type categoryDTO struct {
-	ID       uint      `json:"id"`
-	Title    string    `json:"title"`
-	Position int       `json:"position"`
-	Items    []itemDTO `json:"items"`
+	ID          uint      `json:"id"`
+	Title       string    `json:"title"`
+	Position    int       `json:"position"`
+	Responsible string    `json:"responsible"`
+	Criteria    string    `json:"criteria"`
+	Items       []itemDTO `json:"items"`
 }
 
 type teamDTO struct {
@@ -130,7 +135,8 @@ func toProjectDTO(p *store.Project) projectDTO {
 		Teams:        make([]teamDTO, 0, len(p.Teams)),
 	}
 	for _, c := range p.Categories {
-		cd := categoryDTO{ID: c.ID, Title: c.Title, Position: c.Position, Items: make([]itemDTO, 0, len(c.Items))}
+		cd := categoryDTO{ID: c.ID, Title: c.Title, Position: c.Position, Responsible: c.Responsible,
+			Criteria: c.Criteria, Items: make([]itemDTO, 0, len(c.Items))}
 		for i := range c.Items {
 			it := &c.Items[i]
 			cd.Items = append(cd.Items, toItemDTO(it))

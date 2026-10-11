@@ -68,22 +68,25 @@ func (f *FFmpeg) Probe(ctx context.Context, path string) (ProbeInfo, error) {
 }
 
 // ClipSpec describes one clip render.
+// ClipSpec describes one clip render. It travels as JSON to a remote worker,
+// where Source and Out are filled in with local paths.
 type ClipSpec struct {
-	Source   string
-	Out      string
-	Start    float64
-	End      float64
-	GainDB   float64
-	Frame    string // "fit" or "crop"
-	CropX    int
-	CropY    int
-	CropW    int
-	CropH    int
-	SrcW     int
-	SrcH     int
-	HasVideo bool
-	HasAudio bool
-	Height   int // output height; width is 16:9
+	Source   string  `json:"-"`
+	Out      string  `json:"-"`
+	Start    float64 `json:"start"`
+	End      float64 `json:"end"`
+	GainDB   float64 `json:"gain_db"`
+	Frame    string  `json:"frame"` // "fit" or "crop"
+	CropX    int     `json:"crop_x"`
+	CropY    int     `json:"crop_y"`
+	CropW    int     `json:"crop_w"`
+	CropH    int     `json:"crop_h"`
+	SrcW     int     `json:"src_w"`
+	SrcH     int     `json:"src_h"`
+	HasVideo bool    `json:"has_video"`
+	HasAudio bool    `json:"has_audio"`
+	Height   int     `json:"height"` // output height; width is 16:9
+	Reverse  bool    `json:"reverse"`
 }
 
 // renderVersion is part of every clip key: bump it when the ffmpeg recipe changes
@@ -96,6 +99,10 @@ func ClipKey(mediaID uint, mediaVersion int, s ClipSpec) string {
 	fmt.Fprintf(h, "%s|%d.%d|%.3f|%.3f|%.2f|%s|%d,%d,%d,%d|%d",
 		renderVersion, mediaID, mediaVersion, s.Start, s.End, s.GainDB, s.Frame,
 		s.CropX, s.CropY, s.CropW, s.CropH, s.Height)
+	if s.Reverse {
+		// Appended only when set, so keys of existing clips stay the same.
+		h.Write([]byte("|rev"))
+	}
 	return hex.EncodeToString(h.Sum(nil))[:12]
 }
 
@@ -132,8 +139,10 @@ func ClipArgs(s ClipSpec) []string {
 	outH := s.Height
 	outW := even(outH * 16 / 9)
 
+	// -t before -i limits what is read, so filters (areverse in particular)
+	// only ever see the fragment.
 	args := []string{"-hide_banner", "-nostdin", "-y", "-loglevel", "error",
-		"-ss", fmtSec(s.Start), "-i", s.Source}
+		"-ss", fmtSec(s.Start), "-t", fmtSec(dur), "-i", s.Source}
 	videoIn, audioIn := "0:v:0", "0:a:0"
 	extra := 1
 	if !s.HasVideo {
@@ -159,13 +168,17 @@ func ClipArgs(s ClipSpec) []string {
 
 	fadeIn := min(0.4, dur/4)
 	fadeOut := min(1.5, dur/3)
-	af := []string{
+	var af []string
+	if s.Reverse {
+		af = append(af, "areverse")
+	}
+	af = append(af,
 		"loudnorm=I=-16:TP=-1.5:LRA=11",
 		"aresample=48000",
 		fmt.Sprintf("volume=%sdB", strconv.FormatFloat(s.GainDB, 'f', 2, 64)),
 		fmt.Sprintf("afade=t=in:st=0:d=%s", fmtSec(fadeIn)),
 		fmt.Sprintf("afade=t=out:st=%s:d=%s", fmtSec(dur-fadeOut), fmtSec(fadeOut)),
-	}
+	)
 
 	args = append(args,
 		"-map", videoIn, "-map", audioIn,

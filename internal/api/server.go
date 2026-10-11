@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nermline/Melotrack-Creator/internal/auth"
@@ -15,6 +17,7 @@ import (
 	"github.com/nermline/Melotrack-Creator/internal/game"
 	"github.com/nermline/Melotrack-Creator/internal/live"
 	"github.com/nermline/Melotrack-Creator/internal/media"
+	"github.com/nermline/Melotrack-Creator/internal/worker"
 	"gorm.io/gorm"
 )
 
@@ -26,13 +29,24 @@ type Server struct {
 	yt    *media.YtDlp
 	hub   *live.Hub
 	games *game.Sessions
+
+	remotes   []RemoteWorker
+	statusMu  sync.Mutex
+	statusAt  time.Time
+	statusVal []workerStatus
 }
 
-func NewServer(db *gorm.DB, cfg *config.Config, a *auth.Auth, m *media.Manager, yt *media.YtDlp, hub *live.Hub, games *game.Sessions) *Server {
-	s := &Server{db: db, cfg: cfg, auth: a, media: m, yt: yt, hub: hub, games: games}
+// RemoteWorker is a configured worker and the jobs it takes ("download" or "render").
+type RemoteWorker struct {
+	Role   string
+	Client *worker.Client
+}
+
+func NewServer(db *gorm.DB, cfg *config.Config, a *auth.Auth, m *media.Manager, yt *media.YtDlp, remotes []RemoteWorker, hub *live.Hub, games *game.Sessions) *Server {
+	s := &Server{db: db, cfg: cfg, auth: a, media: m, yt: yt, remotes: remotes, hub: hub, games: games}
 	m.SetNotifier(s)
-	games.OnChange(hub.PublishShow)
-	hub.SetHandlers(s.showView, s.showCommand)
+	games.OnChange(func(k game.Key) { hub.PublishShow(k.Project, k.Session) })
+	hub.SetHandlers(s.showView, s.showCommand, s.showIdle)
 	return s
 }
 
@@ -75,6 +89,7 @@ func (s *Server) Router() *gin.Engine {
 	priv.POST("/items/:iid/source", s.uploadSource)
 	priv.POST("/items/:iid/retry", s.retryDownload)
 	priv.POST("/items/:iid/render", s.forceRender)
+	priv.GET("/items/:iid/loudness", s.itemLoudness)
 
 	priv.GET("/projects/:pid/teams", s.listTeams)
 	priv.POST("/projects/:pid/teams", s.createTeam)

@@ -2,6 +2,7 @@ package media
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -24,6 +25,8 @@ type Notifier interface {
 }
 
 type Options struct {
+	// RetryDelay is how long a job waits before retrying an unreachable worker.
+	RetryDelay      time.Duration
 	DownloadWorkers int
 	RenderWorkers   int
 	ClipHeight      int
@@ -37,7 +40,8 @@ type Options struct {
 type Manager struct {
 	db     *gorm.DB
 	st     *Storage
-	yt     *YtDlp
+	dl     Downloader
+	rd     Renderer
 	ff     *FFmpeg
 	meta   *MetaFetcher
 	notify Notifier
@@ -61,9 +65,14 @@ type runningRender struct {
 	cancel context.CancelFunc
 }
 
-func NewManager(db *gorm.DB, st *Storage, yt *YtDlp, ff *FFmpeg, meta *MetaFetcher, opt Options) *Manager {
+// NewManager wires the job runner. ff is always local (probing, loudness,
+// normalising uploads); dl and rd may be local or a remote worker.
+func NewManager(db *gorm.DB, st *Storage, ff *FFmpeg, meta *MetaFetcher, dl Downloader, rd Renderer, opt Options) *Manager {
+	if opt.RetryDelay <= 0 {
+		opt.RetryDelay = 30 * time.Second
+	}
 	return &Manager{
-		db: db, st: st, yt: yt, ff: ff, meta: meta, opt: opt,
+		db: db, st: st, ff: ff, meta: meta, dl: dl, rd: rd, opt: opt,
 		notify:     nopNotifier{},
 		downloads:  newQueue(),
 		renders:    newQueue(),
@@ -136,6 +145,8 @@ func (m *Manager) resume() {
 			}
 			m.db.Model(&med).Update("status", store.MediaPending)
 			m.downloads.push(med.ID)
+		case med.Status == store.MediaReady && med.Loudness == "":
+			m.analyzeAsync(med.ID)
 		}
 		if !IsUploadID(med.YouTubeID) && (med.Title == "" || med.ThumbFile == "" || !fileExists(m.st.Thumb(med.ThumbFile))) {
 			m.fetchMetaAsync(med.ID)
@@ -243,10 +254,19 @@ func (m *Manager) runDownload(ctx context.Context, mediaID uint) {
 
 	progress := throttle(func(f float64) { m.notify.MediaProgress(mediaID, f) })
 	slog.Info("download started", "youtube", med.YouTubeID)
-	res, err := m.yt.Download(dctx, med.YouTubeID, workDir, progress)
+	res, err := m.dl.Download(dctx, med.YouTubeID, workDir, progress)
 	if err != nil {
 		if dctx.Err() != nil {
 			return // cancelled: an upload replaced it, or the server is stopping
+		}
+		if errors.Is(err, ErrWorkerUnavailable) {
+			slog.Warn("download worker unavailable, will retry", "youtube", med.YouTubeID, "err", err)
+			m.db.Model(&store.Media{}).Where("id = ?", med.ID).Updates(map[string]any{
+				"status": store.MediaPending, "error_code": "worker_offline",
+				"error": "Сервер завантаження недоступний — спробую ще раз, щойно він зʼявиться"})
+			m.notify.MediaChanged(med.ID)
+			m.retryLater(m.downloads, med.ID)
+			return
 		}
 		var de *DownloadError
 		if errors.As(err, &de) {
@@ -258,7 +278,7 @@ func (m *Manager) runDownload(ctx context.Context, mediaID uint) {
 		}
 		return
 	}
-	if err := m.installSource(dctx, med, res.File, "youtube", res.Title); err != nil {
+	if err := m.installSource(dctx, med, res, "youtube"); err != nil {
 		m.failMedia(med.ID, "failed", "Завантажений файл не вдалося прочитати", err.Error())
 	}
 }
@@ -279,16 +299,29 @@ func (m *Manager) processUpload(ctx context.Context, med store.Media, upload str
 		}
 		return
 	}
-	if err := m.installSource(ctx, med, out, "upload", ""); err != nil {
+	if err := m.installSource(ctx, med, DownloadResult{File: out}, "upload"); err != nil {
 		m.failMedia(med.ID, "bad_upload", "Не вдалося обробити файл", err.Error())
 	}
 }
 
 // installSource moves a finished file into place and marks the media ready.
-func (m *Manager) installSource(ctx context.Context, med store.Media, file, kind, title string) error {
+func (m *Manager) installSource(ctx context.Context, med store.Media, res DownloadResult, kind string) error {
+	file, title := res.File, res.Title
 	probe, err := m.ff.Probe(ctx, file)
 	if err != nil {
 		return err
+	}
+	hash := res.Hash
+	if hash == "" {
+		if hash, err = HashFile(file); err != nil {
+			return err
+		}
+	}
+	loudness := res.Loudness
+	if len(loudness) == 0 && probe.HasAudio {
+		if loudness, err = m.ff.LoudnessMap(ctx, file); err != nil {
+			slog.Warn("loudness analysis failed", "media", med.YouTubeID, "err", err)
+		}
 	}
 	name := med.YouTubeID + ".mp4"
 	if err := moveFile(file, m.st.Source(name)); err != nil {
@@ -298,7 +331,7 @@ func (m *Manager) installSource(ctx context.Context, med store.Media, file, kind
 		"status": store.MediaReady, "error": "", "error_code": "",
 		"source_file": name, "source_kind": kind,
 		"width": probe.Width, "height": probe.Height, "duration": probe.Duration,
-		"version": gorm.Expr("version + 1"),
+		"version": gorm.Expr("version + 1"), "source_hash": hash, "loudness": encodeLoudness(loudness),
 	}
 	if med.Title == "" && title != "" {
 		updates["title"] = title
@@ -400,7 +433,64 @@ func (m *Manager) SpecFor(it *store.Item, med *store.Media) ClipSpec {
 		HasVideo: med.Width > 0 && med.Height > 0,
 		HasAudio: true,
 		Height:   m.opt.ClipHeight,
+		Reverse:  it.Reverse,
 	}
+}
+
+// sourceHash returns the media's content hash, computing it for sources
+// installed before hashes were recorded.
+func (m *Manager) sourceHash(med *store.Media) string {
+	if med.SourceHash != "" {
+		return med.SourceHash
+	}
+	h, err := HashFile(m.st.Source(med.SourceFile))
+	if err != nil {
+		return ""
+	}
+	m.db.Model(&store.Media{}).Where("id = ?", med.ID).Update("source_hash", h)
+	med.SourceHash = h
+	return h
+}
+
+// retryLater puts a job back after a pause, e.g. while a remote worker is offline.
+func (m *Manager) retryLater(q *queue, id uint) {
+	time.AfterFunc(m.opt.RetryDelay, func() {
+		if m.ctx.Err() == nil {
+			q.push(id)
+		}
+	})
+}
+
+// Loudness returns the per-second loudness map of a media (nil when unknown).
+func (m *Manager) Loudness(med *store.Media) []float64 {
+	var out []float64
+	_ = json.Unmarshal([]byte(med.Loudness), &out)
+	return out
+}
+
+func encodeLoudness(v []float64) string {
+	if len(v) == 0 {
+		return ""
+	}
+	b, _ := json.Marshal(v)
+	return string(b)
+}
+
+// analyzeAsync measures loudness for sources installed before it was recorded.
+func (m *Manager) analyzeAsync(mediaID uint) {
+	go func() {
+		m.metaSem <- struct{}{}
+		defer func() { <-m.metaSem }()
+		var med store.Media
+		if m.db.First(&med, mediaID).Error != nil || med.Loudness != "" {
+			return
+		}
+		lm, err := m.ff.LoudnessMap(m.ctx, m.st.Source(med.SourceFile))
+		if err != nil || len(lm) == 0 {
+			return
+		}
+		m.db.Model(&store.Media{}).Where("id = ?", mediaID).Update("loudness", encodeLoudness(lm))
+	}()
 }
 
 // DesiredKey is the clip key matching the item's current settings.
@@ -416,7 +506,8 @@ func (m *Manager) Reconcile(itemID uint, delay time.Duration) {
 	if m.db.Preload("Media").First(&it, itemID).Error != nil {
 		return
 	}
-	if it.Media.Status != store.MediaReady {
+	// New songs wait until the organiser has picked the fragment in the editor.
+	if it.Media.Status != store.MediaReady || !it.Configured {
 		if it.ClipStatus != store.ClipPending {
 			m.db.Model(&it).Updates(map[string]any{"clip_status": store.ClipPending, "clip_error": ""})
 			m.notify.ItemChanged(itemID)
@@ -477,8 +568,8 @@ func (m *Manager) runRender(ctx context.Context, itemID uint) {
 		return
 	}
 	med := it.Media
-	if med.Status != store.MediaReady {
-		return // rendered once the download finishes
+	if med.Status != store.MediaReady || !it.Configured {
+		return // rendered once the download finishes and the fragment is chosen
 	}
 	spec := m.SpecFor(&it, &med)
 	key := ClipKey(med.ID, med.Version, spec)
@@ -507,11 +598,20 @@ func (m *Manager) runRender(ctx context.Context, itemID uint) {
 	spec.Out = tmp
 	started := time.Now()
 	progress := throttle(func(f float64) { m.notify.ItemProgress(itemID, f) })
-	err := m.ff.Run(rctx, ClipArgs(spec), spec.End-spec.Start, progress)
+	err := m.rd.Render(rctx, SourceRef{Path: spec.Source, Hash: m.sourceHash(&med)}, spec, progress)
 	if err != nil {
 		os.Remove(tmp)
 		if rctx.Err() != nil {
 			return // superseded by newer settings or shutting down
+		}
+		if errors.Is(err, ErrWorkerUnavailable) {
+			slog.Warn("render worker unavailable, will retry", "item", itemID, "err", err)
+			m.db.Model(&store.Item{}).Where("id = ?", itemID).Updates(map[string]any{
+				"clip_status": store.ClipPending,
+				"clip_error":  "Сервер нарізки недоступний — спробую ще раз, щойно він зʼявиться"})
+			m.notify.ItemChanged(itemID)
+			m.retryLater(m.renders, itemID)
+			return
 		}
 		slog.Warn("render failed", "item", itemID, "err", err)
 		m.db.Model(&store.Item{}).Where("id = ?", itemID).

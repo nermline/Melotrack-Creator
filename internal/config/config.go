@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -46,6 +47,47 @@ type Config struct {
 	RenderWorkers   int   `envconfig:"RENDER_WORKERS" default:"1"`
 	ClipHeight      int   `envconfig:"CLIP_HEIGHT" default:"720"`
 	MaxUploadMB     int64 `envconfig:"MAX_UPLOAD_MB" default:"2048"`
+
+	// Remote workers ("melotrack worker" on another machine, reached over a
+	// VPN). Empty means the job runs on this server. Downloading and cutting
+	// are configured separately and may point at the same worker.
+	DownloadWorkerURL string `envconfig:"DOWNLOAD_WORKER_URL"`
+	RenderWorkerURL   string `envconfig:"RENDER_WORKER_URL"`
+	WorkerToken       string `envconfig:"WORKER_TOKEN"`
+}
+
+// WorkerConfig configures "melotrack worker".
+type WorkerConfig struct {
+	Listen  string  `envconfig:"WORKER_LISTEN" default:"0.0.0.0:8081"`
+	Name    string  `envconfig:"WORKER_NAME"`
+	Token   string  `envconfig:"WORKER_TOKEN"`
+	DataDir string  `envconfig:"DATA_DIR" default:"./data"`
+	CacheGB float64 `envconfig:"WORKER_CACHE_GB" default:"20"`
+
+	YtDlpPath      string `envconfig:"YTDLP_PATH" default:"yt-dlp"`
+	YtDlpProxy     string `envconfig:"YTDLP_PROXY"`
+	YtDlpCookies   string `envconfig:"YTDLP_COOKIES"`
+	YtDlpExtraArgs string `envconfig:"YTDLP_EXTRA_ARGS"`
+	FFmpegPath     string `envconfig:"FFMPEG_PATH" default:"ffmpeg"`
+	FFprobePath    string `envconfig:"FFPROBE_PATH" default:"ffprobe"`
+
+	DownloadWorkers int `envconfig:"DOWNLOAD_WORKERS" default:"2"`
+	RenderWorkers   int `envconfig:"RENDER_WORKERS" default:"2"`
+}
+
+func LoadWorker() (*WorkerConfig, error) {
+	_ = godotenv.Load()
+	cfg := &WorkerConfig{}
+	if err := envconfig.Process("", cfg); err != nil {
+		return nil, fmt.Errorf("config: %w", err)
+	}
+	if len(cfg.Token) < 16 {
+		return nil, fmt.Errorf("config: WORKER_TOKEN must be at least 16 characters")
+	}
+	if cfg.Name == "" {
+		cfg.Name, _ = os.Hostname()
+	}
+	return cfg, nil
 }
 
 func (c *Config) ListenAddr() string { return c.Host + ":" + c.Port }
@@ -83,5 +125,8 @@ func Load() (*Config, error) {
 	}
 	cfg.DownloadWorkers = max(cfg.DownloadWorkers, 1)
 	cfg.RenderWorkers = max(cfg.RenderWorkers, 1)
+	if (cfg.DownloadWorkerURL != "" || cfg.RenderWorkerURL != "") && len(cfg.WorkerToken) < 16 {
+		return nil, fmt.Errorf("config: WORKER_TOKEN (at least 16 characters) is required with a remote worker")
+	}
 	return cfg, nil
 }

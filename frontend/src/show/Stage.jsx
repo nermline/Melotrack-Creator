@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import '@fontsource-variable/playfair-display';
@@ -21,9 +21,45 @@ const rise = (delay = 0) => ({
     animate: { opacity: 1, y: 0, transition: { delay, duration: 0.6, ease: [0.2, 0.8, 0.2, 1] } },
 });
 
+// The stage is always laid out at this size and scaled to fit its box, so the
+// projector, the rehearsal on a phone and the theme thumbnails show exactly the
+// same picture.
+const STAGE_W = 1920;
+const STAGE_H = 1080;
+
 // Stage renders one show state. It is used fullscreen on the projector, inside
 // the rehearsal page and (with preview) as a static theme thumbnail.
-export default function Stage({ view, offset = 0, unlocked = false, preview = false }) {
+export default function Stage(props) {
+    const boxRef = useRef(null);
+    const [scale, setScale] = useState(0);
+    useLayoutEffect(() => {
+        const box = boxRef.current;
+        const fit = () => setScale(Math.min(box.clientWidth / STAGE_W, box.clientHeight / STAGE_H));
+        fit();
+        const ro = new ResizeObserver(fit);
+        ro.observe(box);
+        return () => ro.disconnect();
+    }, []);
+    return (
+        <div ref={boxRef} style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+            <div
+                style={{
+                    position: 'absolute',
+                    left: '50%',
+                    top: '50%',
+                    width: STAGE_W,
+                    height: STAGE_H,
+                    transform: `translate(-50%, -50%) scale(${scale})`,
+                    visibility: scale ? 'visible' : 'hidden',
+                }}
+            >
+                <StageView {...props} />
+            </div>
+        </div>
+    );
+}
+
+function StageView({ view, offset = 0, unlocked = false, preview = false }) {
     const theme = view?.theme || 'neon';
     const phase = view?.phase;
     const timed = !!view?.timer?.duration_ms && !view.timer.paused;

@@ -3,6 +3,8 @@ package api
 import (
 	"errors"
 	"net/http"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nermline/Melotrack-Creator/internal/store"
@@ -65,22 +67,48 @@ func (s *Server) updateCategory(c *gin.Context) {
 		return
 	}
 	var in struct {
-		Title string `json:"title"`
+		Title       *string `json:"title"`
+		Responsible *string `json:"responsible"`
+		Criteria    *string `json:"criteria"`
 	}
 	if !bindJSON(c, &in) {
 		return
 	}
-	title, ok := cleanTitle(in.Title, 120)
-	if !ok {
-		badRequest(c, "Вкажіть назву категорії (до 120 символів)")
-		return
+	upd := map[string]any{}
+	if in.Title != nil {
+		title, ok := cleanTitle(*in.Title, 120)
+		if !ok {
+			badRequest(c, "Вкажіть назву категорії (до 120 символів)")
+			return
+		}
+		upd["title"] = title
 	}
-	if err := s.db.Model(cat).Update("title", title).Error; err != nil {
-		failInternal(c, err)
-		return
+	if in.Responsible != nil {
+		name := strings.Join(strings.Fields(*in.Responsible), " ")
+		if utf8.RuneCountInString(name) > 80 {
+			badRequest(c, "Імʼя відповідального — до 80 символів")
+			return
+		}
+		upd["responsible"] = name
 	}
+	if in.Criteria != nil {
+		criteria := strings.TrimSpace(*in.Criteria)
+		if utf8.RuneCountInString(criteria) > 2000 {
+			badRequest(c, "Критерії оцінювання — до 2000 символів")
+			return
+		}
+		upd["criteria"] = criteria
+	}
+	if len(upd) > 0 {
+		if err := s.db.Model(cat).Updates(upd).Error; err != nil {
+			failInternal(c, err)
+			return
+		}
+	}
+	s.db.First(cat, cat.ID)
 	s.changed(cat.ProjectID)
-	c.JSON(http.StatusOK, gin.H{"id": cat.ID, "title": title})
+	c.JSON(http.StatusOK, categoryDTO{ID: cat.ID, Title: cat.Title, Position: cat.Position,
+		Responsible: cat.Responsible, Criteria: cat.Criteria, Items: []itemDTO{}})
 }
 
 func (s *Server) deleteCategory(c *gin.Context) {

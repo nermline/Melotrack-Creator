@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ChevronDown, ClipboardCheck, Trophy, Users } from 'lucide-react';
+import { ChevronDown, ClipboardCheck, ListChecks, Trophy, UserRound, Users } from 'lucide-react';
 import { api } from '../lib/api';
 import { fmtPoints } from '../lib/format';
 import { Button, Empty } from '../ui';
@@ -206,7 +206,14 @@ function CategoryScoring({ cat, store }) {
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
             <div className="panel min-w-0 overflow-hidden">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3">
-                    <div className="font-bold">{cat.title}</div>
+                    <div className="min-w-0">
+                        <div className="font-bold">{cat.title}</div>
+                        {cat.responsible && (
+                            <div className="mt-0.5 flex items-center gap-1.5 text-xs text-dim">
+                                <UserRound size={12} /> {cat.responsible}
+                            </div>
+                        )}
+                    </div>
                     <div className="text-sm text-dim">
                         Перевірено {done} з {project.teams.length}
                     </div>
@@ -276,21 +283,35 @@ function CategoryScoring({ cat, store }) {
                 </div>
             </div>
 
-            <div className="panel self-start">
-                <button type="button" onClick={() => setShowKey((v) => !v)} className="flex w-full items-center justify-between px-4 py-3 font-bold">
-                    Відповіді
-                    <ChevronDown size={16} className={cx('transition-transform', showKey && 'rotate-180')} />
-                </button>
-                {showKey && (
-                    <ol className="m-0 list-none border-t border-line p-0">
-                        {cat.items.map((it, i) => (
-                            <li key={it.id} className="flex gap-3 border-b border-line px-4 py-2 text-sm last:border-b-0">
-                                <span className="w-5 shrink-0 text-right font-display font-bold text-faint">{i + 1}</span>
-                                <span className={it.answer ? '' : 'text-faint italic'}>{it.answer || 'відповідь не вказана'}</span>
-                            </li>
-                        ))}
-                    </ol>
+            <div className="flex flex-col gap-4 self-start">
+                {cat.criteria ? (
+                    <div className="panel px-4 py-3">
+                        <div className="mb-1.5 flex items-center gap-1.5 font-bold">
+                            <ListChecks size={16} className="text-accent-2" /> Критерії оцінювання
+                        </div>
+                        <p className="m-0 text-sm whitespace-pre-line text-dim">{cat.criteria}</p>
+                    </div>
+                ) : (
+                    <p className="m-0 px-1 text-xs text-faint">
+                        Критерії оцінювання цієї категорії можна записати у «Програмі» — тут їх побачать усі, хто рахує бали.
+                    </p>
                 )}
+                <div className="panel">
+                    <button type="button" onClick={() => setShowKey((v) => !v)} className="flex w-full items-center justify-between px-4 py-3 font-bold">
+                        Відповіді
+                        <ChevronDown size={16} className={cx('transition-transform', showKey && 'rotate-180')} />
+                    </button>
+                    {showKey && (
+                        <ol className="m-0 list-none border-t border-line p-0">
+                            {cat.items.map((it, i) => (
+                                <li key={it.id} className="flex gap-3 border-b border-line px-4 py-2 text-sm last:border-b-0">
+                                    <span className="w-5 shrink-0 text-right font-display font-bold text-faint">{i + 1}</span>
+                                    <span className={it.answer ? '' : 'text-faint italic'}>{it.answer || 'відповідь не вказана'}</span>
+                                </li>
+                            ))}
+                        </ol>
+                    )}
+                </div>
             </div>
         </div>
     );

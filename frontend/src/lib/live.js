@@ -5,7 +5,8 @@ const wsBase = () => `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${loca
 // useLive keeps one WebSocket per project open, reconnecting with backoff.
 // `show` is the latest show state; other events go to onEvent.
 // `offset` converts local time to server time (serverNow ≈ Date.now() + offset).
-export function useLive(pid, role, onEvent) {
+// `session` selects a private rehearsal instead of the real show.
+export function useLive(pid, role, onEvent, session = '') {
     const [status, setStatus] = useState('connecting');
     const [show, setShow] = useState(null);
     const [offset, setOffset] = useState(0);
@@ -25,7 +26,8 @@ export function useLive(pid, role, onEvent) {
         const connect = () => {
             if (!alive) return;
             setStatus(retry === 0 ? 'connecting' : 'reconnecting');
-            const ws = new WebSocket(`${wsBase()}/api/projects/${pid}/live?role=${role}`);
+            const q = session ? `&session=${encodeURIComponent(session)}` : '';
+            const ws = new WebSocket(`${wsBase()}/api/projects/${pid}/live?role=${role}${q}`);
             wsRef.current = ws;
             ws.onopen = () => {
                 if (!alive) return;
@@ -81,7 +83,7 @@ export function useLive(pid, role, onEvent) {
             document.removeEventListener('visibilitychange', onVisible);
             wsRef.current?.close();
         };
-    }, [pid, role]);
+    }, [pid, role, session]);
 
     const command = useCallback((action, value = 0) => {
         const ws = wsRef.current;

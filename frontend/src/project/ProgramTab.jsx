@@ -3,17 +3,22 @@ import { useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion, Reorder, useDragControls } from 'framer-motion';
 import {
     CircleAlert,
+    CircleDashed,
     Eye,
     EyeOff,
     FileAudio,
     GripVertical,
+    ListChecks,
     ListMusic,
+    MonitorPlay,
     Pause,
     Pencil,
     Play,
     Plus,
     RefreshCw,
     Trash2,
+    Undo2,
+    UserRound,
 } from 'lucide-react';
 import { api, upload } from '../lib/api';
 import { fmtTime, songs } from '../lib/format';
@@ -94,6 +99,10 @@ export default function ProgramTab({ store }) {
     };
 
     const editingItem = editing && project.categories.flatMap((c) => c.items).find((i) => i.id === editing);
+    const openEditor = (id) => {
+        stopPreview();
+        setEditing(id);
+    };
 
     return (
         <div className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
@@ -147,13 +156,11 @@ export default function ProgramTab({ store }) {
                     <CategoryView
                         key={selected.id}
                         cat={selected}
+                        index={project.categories.findIndex((c) => c.id === selected.id)}
                         store={store}
                         onRename={(t) => renameCategory(selected, t)}
                         onDelete={() => deleteCategory(selected)}
-                        onEdit={(id) => {
-                            stopPreview();
-                            setEditing(id);
-                        }}
+                        onEdit={openEditor}
                     />
                 )}
             </section>
@@ -172,17 +179,35 @@ export default function ProgramTab({ store }) {
 function readiness(cat, media) {
     let bad = 0;
     let busy = 0;
+    let todo = 0;
     for (const it of cat.items) {
         const s = songState(it, media[it.media_id]).key;
         if (s === 'download_error' || s === 'clip_error') bad++;
+        else if (s === 'unconfigured') todo++;
         else if (s !== 'ready') busy++;
     }
-    return { bad, busy };
+    return { bad, busy, todo };
+}
+
+// startDrag begins dragging a row by its handle without selecting the text
+// of the rows the pointer passes over.
+function startDrag(e, controls) {
+    e.preventDefault();
+    window.getSelection()?.removeAllRanges();
+    document.body.classList.add('select-none');
+    const done = () => {
+        document.body.classList.remove('select-none');
+        window.removeEventListener('pointerup', done);
+        window.removeEventListener('pointercancel', done);
+    };
+    window.addEventListener('pointerup', done);
+    window.addEventListener('pointercancel', done);
+    controls.start(e);
 }
 
 function CategoryRow({ cat, index, media, active, onSelect, onDragEnd }) {
     const controls = useDragControls();
-    const { bad, busy } = readiness(cat, media);
+    const { bad, busy, todo } = readiness(cat, media);
     return (
         <Reorder.Item
             value={cat}
@@ -197,7 +222,7 @@ function CategoryRow({ cat, index, media, active, onSelect, onDragEnd }) {
         >
             <span
                 className="cursor-grab touch-none px-0.5 text-faint active:cursor-grabbing"
-                onPointerDown={(e) => controls.start(e)}
+                onPointerDown={(e) => startDrag(e, controls)}
                 onClick={(e) => e.stopPropagation()}
                 title="Перетягніть, щоб змінити порядок"
             >
@@ -207,12 +232,15 @@ function CategoryRow({ cat, index, media, active, onSelect, onDragEnd }) {
             <span className="min-w-0 flex-1 truncate text-sm font-semibold">{cat.title}</span>
             {bad > 0 && <CircleAlert size={15} className="text-bad" title="Є пісні з помилками" />}
             {bad === 0 && busy > 0 && <Spinner size={13} className="text-info" />}
+            {bad === 0 && busy === 0 && todo > 0 && (
+                <CircleDashed size={15} className="text-warn" title="Є пісні без вибраного фрагмента" />
+            )}
             <span className="text-xs text-faint">{cat.items.length}</span>
         </Reorder.Item>
     );
 }
 
-function CategoryView({ cat, store, onRename, onDelete, onEdit }) {
+function CategoryView({ cat, index, store, onRename, onDelete, onEdit }) {
     const { project } = store;
     const { toast } = useFeedback();
     const [items, setItems] = useState(cat.items);
@@ -250,12 +278,25 @@ function CategoryView({ cat, store, onRename, onDelete, onEdit }) {
                         {songs(cat.items.length)}
                     </div>
                 </div>
-                <Button variant="danger" size="sm" icon={Trash2} onClick={onDelete}>
-                    Видалити категорію
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                    <a
+                        href={`/p/${project.id}/preview?cat=${index}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn btn-sm no-underline"
+                        title="Відкрити репетицію з цієї категорії. Справжній показ не зміниться"
+                    >
+                        <MonitorPlay size={15} strokeWidth={2.2} /> Переглянути категорію
+                    </a>
+                    <Button variant="danger" size="sm" icon={Trash2} onClick={onDelete}>
+                        Видалити категорію
+                    </Button>
+                </div>
             </div>
 
-            <AddSongs cat={cat} store={store} />
+            <CategoryDetails cat={cat} store={store} />
+
+            <AddSongs cat={cat} store={store} onAdded={onEdit} />
 
             {items.length === 0 ? (
                 <div className="panel mt-4">
@@ -292,7 +333,84 @@ function CategoryView({ cat, store, onRename, onDelete, onEdit }) {
     );
 }
 
-function AddSongs({ cat, store }) {
+// DraftField edits a text and saves it when the field loses focus. While it
+// is not being edited it shows the saved value (changes by others included).
+function DraftField({ value, onSave, multiline, className, ...props }) {
+    const [draft, setDraft] = useState(null);
+    const cancelled = useRef(false);
+    const shown = draft ?? value ?? '';
+    const Tag = multiline ? 'textarea' : 'input';
+    const lines = multiline ? shown.split('\n').length : 1;
+    return (
+        <Tag
+            className={cx('field', multiline && 'resize-y', className)}
+            value={shown}
+            rows={multiline ? Math.min(Math.max(lines, 2), 8) : undefined}
+            onFocus={() => setDraft(value || '')}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => {
+                if (!cancelled.current && draft !== null && draft.trim() !== (value || '').trim()) onSave(draft.trim());
+                cancelled.current = false;
+                setDraft(null);
+            }}
+            onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                    cancelled.current = true;
+                    e.currentTarget.blur();
+                } else if (e.key === 'Enter' && (!multiline || e.metaKey || e.ctrlKey)) {
+                    e.preventDefault();
+                    e.currentTarget.blur();
+                }
+            }}
+            {...props}
+        />
+    );
+}
+
+// Who prepares the category and how its answers are scored: both are shown
+// to the scorers on the "Оцінювання" tab.
+function CategoryDetails({ cat, store }) {
+    const { toast } = useFeedback();
+    const save = async (body) => {
+        try {
+            await api.patch(`/api/categories/${cat.id}`, body);
+            store.reload();
+        } catch (err) {
+            toast(err.message, 'bad');
+        }
+    };
+    return (
+        <div className="panel mb-3 grid gap-3 p-3 sm:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
+            <label className="block min-w-0">
+                <span className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-dim">
+                    <UserRound size={13} /> Відповідальні
+                </span>
+                <DraftField
+                    value={cat.responsible}
+                    onSave={(responsible) => save({ responsible })}
+                    maxLength={80}
+                    placeholder="Хто готує категорію"
+                    className="py-2 text-sm"
+                />
+            </label>
+            <label className="block min-w-0">
+                <span className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-dim">
+                    <ListChecks size={13} /> Критерії оцінювання
+                </span>
+                <DraftField
+                    multiline
+                    value={cat.criteria}
+                    onSave={(criteria) => save({ criteria })}
+                    maxLength={2000}
+                    placeholder="Напр.: 1 бал за виконавця, 1 бал за назву, 0,5 — якщо майже вгадали"
+                    className="py-2 text-sm"
+                />
+            </label>
+        </div>
+    );
+}
+
+function AddSongs({ cat, store, onAdded }) {
     const [text, setText] = useState('');
     const [busy, setBusy] = useState(false);
     const [uploading, setUploading] = useState(null);
@@ -309,11 +427,16 @@ function AddSongs({ cat, store }) {
             setText('');
             await store.reload();
             const n = res.items.length;
-            toast(
-                `Додано ${songs(n)}. Завантаження йде у фоні.` +
-                    (res.invalid.length ? `\nПропущено рядків без посилання: ${res.invalid.length}` : ''),
-                res.invalid.length ? 'info' : 'ok',
-            );
+            const skipped = res.invalid.length ? `\nПропущено рядків без посилання: ${res.invalid.length}` : '';
+            if (n === 1) {
+                // One song: pick its fragment right away while the video downloads.
+                onAdded(res.items[0].id);
+                if (skipped) toast(skipped.trim(), 'info');
+            } else if (n > 1) {
+                toast(`Додано ${songs(n)}. Відкрийте кожну й виберіть фрагмент — кліп наріжеться після збереження.${skipped}`, 'ok');
+            } else {
+                toast(skipped.trim() || 'Посилань не знайдено', 'info');
+            }
         } catch (err) {
             toast(err.message, 'bad');
         } finally {
@@ -329,9 +452,9 @@ function AddSongs({ cat, store }) {
         fd.append('file', file);
         setUploading(0);
         try {
-            await upload(`/api/categories/${cat.id}/items/upload`, fd, setUploading);
+            const it = await upload(`/api/categories/${cat.id}/items/upload`, fd, setUploading);
             await store.reload();
-            toast('Файл завантажено, обробка йде у фоні');
+            if (it?.id) onAdded(it.id);
         } catch (err) {
             toast(err.message, 'bad');
         } finally {
@@ -351,7 +474,7 @@ function AddSongs({ cat, store }) {
                     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) add();
                 }}
                 onPaste={(e) => {
-                    // Pasting a single link into an empty box adds it right away.
+                    // Pasting a single link into an empty box adds it and opens the editor.
                     const pasted = e.clipboardData.getData('text');
                     if (!text && !pasted.includes('\n') && /youtu/.test(pasted)) {
                         e.preventDefault();
@@ -452,7 +575,7 @@ function SongRow({ item, index, media, mediaProgress, clipProgress, store, onEdi
         >
             <span
                 className="cursor-grab touch-none text-faint active:cursor-grabbing"
-                onPointerDown={(e) => controls.start(e)}
+                onPointerDown={(e) => startDrag(e, controls)}
                 title="Перетягніть, щоб змінити порядок"
             >
                 <GripVertical size={16} />
@@ -473,10 +596,21 @@ function SongRow({ item, index, media, mediaProgress, clipProgress, store, onEdi
                     <span className="font-mono">
                         {fmtTime(item.start)}–{fmtTime(item.end)}
                     </span>
+                    {item.reverse && (
+                        <span className="inline-flex items-center gap-1 font-semibold text-accent-2">
+                            <Undo2 size={12} /> реверс
+                        </span>
+                    )}
                     {media?.title && <span className="max-w-[26ch] truncate text-faint">{media.title}</span>}
                     <AnimatePresence initial={false}>
                         {state.key !== 'ready' && (
-                            <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                            <motion.span
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                onClick={state.key === 'unconfigured' ? onEdit : undefined}
+                                className={state.key === 'unconfigured' ? 'cursor-pointer' : undefined}
+                            >
                                 <Chip tone={state.tone} icon={busy ? undefined : state.tone === 'bad' ? CircleAlert : undefined}>
                                     {busy && <Spinner size={11} />}
                                     {state.label}
@@ -504,7 +638,14 @@ function SongRow({ item, index, media, mediaProgress, clipProgress, store, onEdi
                     icon={item.show_video ? Eye : EyeOff}
                     className={item.show_video ? 'text-accent-2' : 'text-faint'}
                     onClick={() => patch({ show_video: !item.show_video })}
-                    title={item.show_video ? 'Глядачі бачать відео' : 'Лише звук (відео приховано)'}
+                    disabled={item.reverse}
+                    title={
+                        item.reverse
+                            ? 'Реверс звучить без відео'
+                            : item.show_video
+                              ? 'Глядачі бачать відео'
+                              : 'Лише звук (відео приховано)'
+                    }
                 />
                 <Button
                     size="sm"

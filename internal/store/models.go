@@ -31,6 +31,10 @@ type Category struct {
 	ProjectID uint
 	Title     string
 	Position  int
+	// Responsible is the organiser who prepares the category.
+	Responsible string
+	// Criteria tell the people scoring how many points to give for what.
+	Criteria string
 
 	Items []Item `gorm:"foreignKey:CategoryID"`
 }
@@ -64,6 +68,11 @@ type Media struct {
 	Duration   float64
 	// Version bumps whenever the source file is replaced, which invalidates rendered clips.
 	Version int
+	// Loudness is a JSON array with the loudness (LUFS) of every second of the
+	// source; the editor uses it to play the fragment as loud as the clip will be.
+	Loudness string
+	// SourceHash is the sha256 of the source file; remote workers cache by it.
+	SourceHash string
 }
 
 func (Media) TableName() string { return "media" }
@@ -101,6 +110,11 @@ type Item struct {
 	CropY      int
 	CropW      int
 	CropH      int
+	// Reverse plays the fragment's audio backwards (and never shows the video).
+	Reverse bool
+	// Configured is set once the organiser saved the fragment in the editor;
+	// only then is the clip cut (new songs are not cut with default settings).
+	Configured bool
 
 	ClipStatus string
 	ClipKey    string

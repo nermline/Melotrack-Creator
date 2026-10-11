@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, CircleAlert, ExternalLink, Eye, Gamepad2, Monitor, Smartphone, TriangleAlert } from 'lucide-react';
+import { Check, CircleAlert, ExternalLink, Eye, Gamepad2, Monitor, Server, Smartphone, TriangleAlert } from 'lucide-react';
 import { api } from '../lib/api';
 import { categories, songs, teams } from '../lib/format';
 import { QR } from '../ui';
@@ -37,6 +37,32 @@ function sampleView(project, theme) {
     };
 }
 
+const ROLE = { download: 'завантаження', render: 'нарізка' };
+
+// Workers lists the remote servers that download or cut videos, one line per
+// address (one worker often does both).
+function Workers({ list }) {
+    if (!list?.length) return null;
+    const byUrl = new Map();
+    for (const w of list) {
+        const prev = byUrl.get(w.url);
+        byUrl.set(w.url, prev ? { ...prev, roles: [...prev.roles, ROLE[w.role]] } : { ...w, roles: [ROLE[w.role]] });
+    }
+    return (
+        <ul className="m-0 mt-2 list-none p-0">
+            {[...byUrl.values()].map((w) => (
+                <li key={w.url} className="flex items-start gap-2 py-0.5" title={w.error || w.url}>
+                    <Server size={14} className={cx('mt-0.5 shrink-0', w.online ? 'text-ok' : 'text-bad')} />
+                    <span className="min-w-0">
+                        <span className="text-ink">{w.name || w.url}</span> · {w.roles.join(', ')}
+                        {w.online ? (w.ytdlp_version ? ` · yt-dlp ${w.ytdlp_version}` : '') : ' · недоступний'}
+                    </span>
+                </li>
+            ))}
+        </ul>
+    );
+}
+
 export default function ShowTab({ store }) {
     const { project } = store;
     const { toast } = useFeedback();
@@ -68,7 +94,8 @@ export default function ShowTab({ store }) {
         return {
             items: items.length,
             broken: states.filter((s) => s === 'download_error' || s === 'clip_error').length,
-            busy: states.filter((s) => !['ready', 'download_error', 'clip_error'].includes(s)).length,
+            busy: states.filter((s) => !['ready', 'download_error', 'clip_error', 'unconfigured'].includes(s)).length,
+            todo: states.filter((s) => s === 'unconfigured').length,
             noAnswer: items.filter((i) => !i.answer).length,
             emptyCats: project.categories.filter((c) => c.items.length === 0).length,
         };
@@ -78,7 +105,7 @@ export default function ShowTab({ store }) {
     const devices = [
         { href: `${base}/screen`, icon: Monitor, title: 'Екран', text: 'Відкрийте на компʼютері, підключеному до проєктора, і розгорніть на весь екран.' },
         { href: `${base}/remote`, icon: Smartphone, title: 'Пульт', text: 'Керування показом з телефона. Відскануйте QR і увійдіть тим самим паролем.', qr: true },
-        { href: `${base}/preview`, icon: Eye, title: 'Репетиція', text: 'Екран і пульт на одній сторінці.' },
+        { href: `${base}/preview`, icon: Eye, title: 'Репетиція', text: 'Екран і пульт на одній сторінці. Бачите лише ви — справжній показ не зміниться.' },
     ];
 
     return (
@@ -118,7 +145,7 @@ export default function ShowTab({ store }) {
                                     project.theme === t.id ? 'border-accent' : 'border-transparent hover:border-line-strong',
                                 )}
                             >
-                                <div className="pointer-events-none aspect-video">
+                                <div className="pointer-events-none relative aspect-video">
                                     <Stage view={sampleView(project, t.id)} offset={0} preview />
                                 </div>
                                 <div className="p-3">
@@ -162,15 +189,23 @@ export default function ShowTab({ store }) {
                             {categories(project.categories.length)}
                             {checks.emptyCats > 0 && `, з них порожніх: ${checks.emptyCats}`}
                         </Check2>
-                        <Check2 ok={checks.items > 0 && checks.broken === 0 && checks.busy === 0} warn={checks.busy > 0 && checks.broken === 0}>
+                        <Check2
+                            ok={checks.items > 0 && checks.broken === 0 && checks.busy === 0 && checks.todo === 0}
+                            warn={(checks.busy > 0 || checks.todo > 0) && checks.broken === 0}
+                        >
                             {checks.items === 0
                                 ? 'Пісень ще немає'
                                 : checks.broken > 0
                                   ? `${songs(checks.broken)} з помилкою — відкрийте «Програму»`
                                   : checks.busy > 0
                                     ? `Готуються: ${songs(checks.busy)}`
-                                    : `Усі ${songs(checks.items)} готові`}
+                                    : checks.todo > 0
+                                      ? `Готово ${checks.items - checks.todo} з ${songs(checks.items)}`
+                                      : `Усі ${songs(checks.items)} готові`}
                         </Check2>
+                        {checks.todo > 0 && (
+                            <Check2 warn>Без вибраного фрагмента: {songs(checks.todo)} — відкрийте їх у «Програмі» й збережіть</Check2>
+                        )}
                         <Check2 ok={checks.noAnswer === 0} warn>
                             {checks.noAnswer === 0 ? 'Відповіді заповнені' : `Без відповіді: ${songs(checks.noAnswer)}`}
                         </Check2>
@@ -179,9 +214,12 @@ export default function ShowTab({ store }) {
                         </Check2>
                     </ul>
                     {system && (
-                        <p className="mt-2 mb-0 border-t border-line pt-3 text-sm text-dim">
-                            Черга: завантажень {system.queue.downloads}, нарізок {system.queue.renders} · кліпи {system.clip_height}p
-                        </p>
+                        <div className="mt-2 border-t border-line pt-3 text-sm text-dim">
+                            <p className="m-0">
+                                Черга: завантажень {system.queue.downloads}, нарізок {system.queue.renders} · кліпи {system.clip_height}p
+                            </p>
+                            <Workers list={system.workers} />
+                        </div>
                     )}
                 </section>
             </aside>

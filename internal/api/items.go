@@ -240,6 +240,8 @@ type itemPatch struct {
 	Crop       *rect    `json:"crop"`
 	YouTubeURL *string  `json:"youtube_url"`
 	CategoryID *uint    `json:"category_id"`
+	Reverse    *bool    `json:"reverse"`
+	Configured *bool    `json:"configured"`
 }
 
 func (s *Server) updateItem(c *gin.Context) {
@@ -306,6 +308,15 @@ func (s *Server) updateItem(c *gin.Context) {
 		}
 		if in.Crop != nil {
 			it.CropX, it.CropY, it.CropW, it.CropH = in.Crop.X, in.Crop.Y, in.Crop.W, in.Crop.H
+		}
+		if in.Reverse != nil {
+			it.Reverse = *in.Reverse
+		}
+		if it.Reverse {
+			it.ShowVideo = false // a reversed song is only heard
+		}
+		if in.Configured != nil {
+			it.Configured = *in.Configured
 		}
 		if err := validateItem(it); err != nil {
 			return err
@@ -528,6 +539,17 @@ func (s *Server) retryDownload(c *gin.Context) {
 		return
 	}
 	s.itemResponse(c, http.StatusAccepted, it.ID)
+}
+
+// itemLoudness returns the per-second loudness of the item's source, which
+// the editor uses to preview the fragment at the clip's final volume.
+func (s *Server) itemLoudness(c *gin.Context) {
+	it, _, ok := s.loadItem(c)
+	if !ok {
+		return
+	}
+	c.Header("Cache-Control", "private, max-age=60")
+	c.JSON(http.StatusOK, gin.H{"media_id": it.MediaID, "version": it.Media.Version, "loudness": s.media.Loudness(&it.Media)})
 }
 
 func (s *Server) forceRender(c *gin.Context) {

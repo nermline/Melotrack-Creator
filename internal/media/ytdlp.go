@@ -39,6 +39,10 @@ func (e *DownloadError) Error() string { return e.Message + ": " + e.Detail }
 type DownloadResult struct {
 	File  string
 	Title string
+	// Hash and Loudness are filled in by remote workers (computed where the
+	// file is); empty values are computed here when the source is installed.
+	Hash     string
+	Loudness []float64
 }
 
 func (y *YtDlp) args(id, outDir string) []string {

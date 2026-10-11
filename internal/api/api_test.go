@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -43,8 +44,9 @@ func newEnv(t *testing.T) *env {
 	// Tools that do not exist: downloads fail fast, nothing touches the network.
 	yt := &media.YtDlp{Path: "/nonexistent/yt-dlp"}
 	ff := &media.FFmpeg{FFmpeg: "/nonexistent/ffmpeg", FFprobe: "/nonexistent/ffprobe"}
-	mgr := media.NewManager(db, st, yt, ff, nil, media.Options{DownloadWorkers: 1, RenderWorkers: 1, ClipHeight: 720})
-	s := NewServer(db, cfg, auth.New("0123456789abcdef0123", "secret", time.Hour, false), mgr, yt, live.NewHub(nil), game.NewSessions(db))
+	mgr := media.NewManager(db, st, ff, nil, media.LocalDownloader{YT: yt}, media.LocalRenderer{FF: ff},
+		media.Options{DownloadWorkers: 1, RenderWorkers: 1, ClipHeight: 720})
+	s := NewServer(db, cfg, auth.New("0123456789abcdef0123", "secret", time.Hour, false), mgr, yt, nil, live.NewHub(nil), game.NewSessions(db))
 	ts := httptest.NewServer(s.Router())
 	t.Cleanup(ts.Close)
 	jar, _ := cookiejar.New(nil)
@@ -230,10 +232,100 @@ func TestContentFlow(t *testing.T) {
 	e.do("GET", fmt.Sprintf("/api/projects/%d", pid), nil, http.StatusNotFound)
 }
 
+func TestCategoryAndItemSettings(t *testing.T) {
+	e := newEnv(t)
+	e.do("POST", "/api/login", map[string]string{"password": "secret"}, http.StatusOK)
+	pid := id(e.do("POST", "/api/projects", map[string]string{"title": "Налаштування"}, http.StatusCreated))
+	cid := id(e.do("POST", fmt.Sprintf("/api/projects/%d/categories", pid), map[string]string{"title": "Реверс"}, http.StatusCreated))
+
+	cat := e.do("PATCH", fmt.Sprintf("/api/categories/%d", cid), map[string]any{
+		"responsible": "  Оля \n  і Петро ", "criteria": "1 бал — виконавець\n1 бал — назва",
+	}, http.StatusOK)
+	if cat["responsible"] != "Оля і Петро" || cat["criteria"] != "1 бал — виконавець\n1 бал — назва" || cat["title"] != "Реверс" {
+		t.Fatalf("category: %v", cat)
+	}
+	e.do("PATCH", fmt.Sprintf("/api/categories/%d", cid), map[string]any{"title": "   "}, http.StatusBadRequest)
+	e.do("PATCH", fmt.Sprintf("/api/categories/%d", cid), map[string]any{"criteria": strings.Repeat("x", 2001)}, http.StatusBadRequest)
+
+	res := e.do("POST", fmt.Sprintf("/api/categories/%d/items", cid), map[string]any{"urls": []string{"https://youtu.be/dQw4w9WgXcQ"}}, http.StatusCreated)
+	it := res["items"].([]any)[0].(map[string]any)
+	if it["configured"] != false || it["reverse"] != false {
+		t.Fatalf("a pasted link waits for the editor: %v", it)
+	}
+	path := fmt.Sprintf("/api/items/%d", id(it))
+	upd := e.do("PATCH", path, map[string]any{"show_video": true, "reverse": true, "configured": true}, http.StatusOK)
+	if upd["reverse"] != true || upd["show_video"] != false || upd["configured"] != true {
+		t.Fatalf("reverse is sound only: %v", upd)
+	}
+	upd = e.do("PATCH", path, map[string]any{"show_video": true}, http.StatusOK)
+	if upd["show_video"] != false {
+		t.Fatalf("video stays off while reversed: %v", upd)
+	}
+
+	loud := e.do("GET", path+"/loudness", nil, http.StatusOK)
+	if _, ok := loud["loudness"]; !ok || int(loud["media_id"].(float64)) == 0 {
+		t.Fatalf("loudness: %v", loud)
+	}
+
+	dup := id(e.do("POST", fmt.Sprintf("/api/projects/%d/duplicate", pid), map[string]string{"title": "Копія"}, http.StatusCreated))
+	dc := e.do("GET", fmt.Sprintf("/api/projects/%d", dup), nil, http.StatusOK)["categories"].([]any)[0].(map[string]any)
+	di := dc["items"].([]any)[0].(map[string]any)
+	if dc["criteria"] != cat["criteria"] || dc["responsible"] != cat["responsible"] || di["reverse"] != true || di["configured"] != true {
+		t.Fatalf("duplicate lost settings: %v", dc)
+	}
+}
+
+// A rehearsal is private to whoever opened it and never touches the real show.
+func TestRehearsalSessionsAreIsolated(t *testing.T) {
+	e := newEnv(t)
+	e.do("POST", "/api/login", map[string]string{"password": "secret"}, http.StatusOK)
+	pid := id(e.do("POST", "/api/projects", map[string]string{"title": "Репетиція"}, http.StatusCreated))
+	for _, title := range []string{"Перша", "Друга"} {
+		e.do("POST", fmt.Sprintf("/api/projects/%d/categories", pid), map[string]string{"title": title}, http.StatusCreated)
+	}
+
+	show := e.dialLive(pid, "remote")
+	if v := readShow(t, show); v["phase"] != "welcome" {
+		t.Fatalf("show: %v", v)
+	}
+	mine := e.dialSession(pid, "remote", "r-alice01")
+	theirs := e.dialSession(pid, "remote", "r-bob0001")
+	readShow(t, mine)
+	readShow(t, theirs)
+
+	mine.WriteJSON(map[string]any{"type": "cmd", "action": "goto", "value": 1})
+	v := waitPhase(t, mine, "category")
+	if v["category"].(map[string]any)["title"] != "Друга" {
+		t.Fatalf("rehearsal goto: %v", v)
+	}
+	time.Sleep(150 * time.Millisecond)
+	if s := readShowNow(t, show); s != nil && s["phase"] != "welcome" {
+		t.Fatalf("the real show moved with a rehearsal: %v", s["phase"])
+	}
+	if s := readShowNow(t, theirs); s != nil && s["phase"] != "welcome" {
+		t.Fatalf("another rehearsal moved: %v", s["phase"])
+	}
+
+	// Bad session ids are refused before the upgrade.
+	u, _ := url.Parse(e.srv.URL)
+	hdr := http.Header{}
+	for _, c := range e.client.Jar.Cookies(u) {
+		hdr.Add("Cookie", c.String())
+	}
+	if _, resp, err := websocket.DefaultDialer.Dial(fmt.Sprintf("ws://%s/api/projects/%d/live?role=remote&session=..%%2F", u.Host, pid), hdr); err == nil || resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad session accepted: %v", err)
+	}
+}
+
 func (e *env) dialLive(pid int, role string) *websocket.Conn {
 	e.t.Helper()
+	return e.dialSession(pid, role, "")
+}
+
+func (e *env) dialSession(pid int, role, session string) *websocket.Conn {
+	e.t.Helper()
 	u, _ := url.Parse(e.srv.URL)
-	wsURL := fmt.Sprintf("ws://%s/api/projects/%d/live?role=%s", u.Host, pid, role)
+	wsURL := fmt.Sprintf("ws://%s/api/projects/%d/live?role=%s&session=%s", u.Host, pid, role, session)
 	hdr := http.Header{}
 	for _, c := range e.client.Jar.Cookies(u) {
 		hdr.Add("Cookie", c.String())

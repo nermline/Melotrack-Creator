@@ -217,7 +217,8 @@ func (s *Server) duplicateProject(c *gin.Context) {
 			return err
 		}
 		for _, cat := range src.Categories {
-			nc := store.Category{ProjectID: dst.ID, Title: cat.Title, Position: cat.Position}
+			nc := store.Category{ProjectID: dst.ID, Title: cat.Title, Position: cat.Position,
+				Responsible: cat.Responsible, Criteria: cat.Criteria}
 			if err := tx.Omit("Items").Create(&nc).Error; err != nil {
 				return err
 			}

@@ -1,6 +1,6 @@
 #!/bin/sh
-# Prepares the data volume, keeps yt-dlp fresh and starts the server as an
-# unprivileged user. Failures of the yt-dlp update never block start-up.
+# Prepares the data volume, keeps yt-dlp fresh and starts the server (or, with
+# the "worker" argument, a worker) as an unprivileged user. Failures of the yt-dlp update never block start-up.
 set -u
 
 APP_USER=melotrack
@@ -38,4 +38,5 @@ elif [ "${YTDLP_POT_PROVIDER:-false}" = "true" ]; then
 fi
 
 echo "entrypoint: yt-dlp $(/opt/yt-dlp/bin/yt-dlp --version 2>/dev/null || echo '?'), deno $(deno --version 2>/dev/null | head -n1 | cut -d' ' -f2)"
-exec /app/melotrack
+# "worker" (docker-compose.worker.yml) starts a download/cutting worker instead.
+exec /app/melotrack "$@"

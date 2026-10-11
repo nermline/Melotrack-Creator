@@ -27,7 +27,7 @@ export function Backdrop({ theme, dim }) {
     );
 }
 
-export function Record({ className, label }) {
+export function Record({ className }) {
     return (
         <svg viewBox="0 0 200 200" className={className} aria-hidden="true">
             <defs>
@@ -43,11 +43,6 @@ export function Record({ className, label }) {
             <path d="M100 8 A92 92 0 0 1 180 60" stroke="rgb(255 255 255 / 0.12)" strokeWidth="6" fill="none" strokeLinecap="round" />
             <circle cx="100" cy="100" r="34" fill="var(--a1, #f28c28)" />
             <circle cx="100" cy="100" r="34" fill="none" stroke="rgb(0 0 0 / 0.25)" strokeWidth="3" />
-            {label && (
-                <text x="100" y="112" textAnchor="middle" fontSize="34" fontWeight="800" fill="#1b120c" fontFamily="var(--display)">
-                    {label}
-                </text>
-            )}
             <circle cx="100" cy="100" r="4" fill="#1b120c" />
         </svg>
     );
@@ -56,7 +51,7 @@ export function Record({ className, label }) {
 // What the audience sees while a song plays without its video.
 export function PlayingVisual({ theme, paused, number }) {
     if (theme === 'vinyl') {
-        return <Record className={`vinyl-disc ${paused ? 'paused' : ''}`} label={number} />;
+        return <Record className={`vinyl-disc ${paused ? 'paused' : ''}`} />;
     }
     if (theme === 'stage') {
         return (
@@ -108,8 +103,13 @@ export function RingTimer({ fraction, seconds, color = 'var(--a2)', size = '58cq
                     display: 'grid',
                     placeItems: 'center',
                     fontSize: 'min(24cqmin, 26cqh)',
-                    fontVariantNumeric: 'tabular-nums',
+                    // Playfair (vinyl) draws old-style figures that hang below
+                    // the centre; lining figures sit where the eye expects.
+                    fontVariantNumeric: 'lining-nums tabular-nums',
                     fontStyle: 'normal',
+                    lineHeight: 1,
+                    // Centre the digit itself, not the line box with its descender space.
+                    textBox: 'trim-both cap alphabetic',
                 }}
             >
                 {seconds}

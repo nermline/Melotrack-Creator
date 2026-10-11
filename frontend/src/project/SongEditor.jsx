@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     CircleAlert,
     ExternalLink,
-    Eye,
     ImagePlus,
     Link as LinkIcon,
+    Pause,
+    Play,
     RefreshCw,
     Trash2,
     Upload,
@@ -16,12 +17,14 @@ import { Button, Chip, Field, Modal, ProgressBar, Spinner, Toggle } from '../ui'
 import { useFeedback } from '../ui/feedbackContext';
 import ClipEditor from './ClipEditor';
 import ImageCropModal from './ImageCropModal';
+import { stopPreview, togglePreview, usePreview } from './preview';
 import { songState } from './useProjectStore';
 
 function toDraft(item) {
     return {
         answer: item.answer,
         show_video: item.show_video,
+        reverse: item.reverse,
         gain_db: item.gain_db,
         start: item.start,
         end: item.end,
@@ -30,31 +33,43 @@ function toDraft(item) {
     };
 }
 
-function diff(item, d) {
+// changed returns the fields of b that differ from a.
+function changed(a, b) {
     const out = {};
-    const base = toDraft(item);
-    for (const k of Object.keys(d)) {
-        if (JSON.stringify(d[k]) !== JSON.stringify(base[k])) out[k] = d[k];
+    for (const k of Object.keys(b)) {
+        if (JSON.stringify(a[k]) !== JSON.stringify(b[k])) out[k] = b[k];
     }
-    if (out.crop === null) delete out.crop;
     return out;
 }
 
+const CUT_FIELDS = ['start', 'end', 'frame', 'crop', 'gain_db', 'reverse'];
+const NO_CHANGES = {};
+
 export default function SongEditor({ open, item, media, store, onClose: close0 }) {
-    // The draft starts as the saved song and survives live updates of it
-    // (a finished render must not wipe what the editor is changing).
-    const [edits, setEdits] = useState({ id: null, draft: null });
+    // The editor keeps only the fields the organiser touched, on top of the
+    // live song: a finished download or an answer filled in from YouTube shows
+    // up in the editor, and saving never overwrites it with a stale value.
+    const [edits, setEdits] = useState({ id: null, changes: NO_CHANGES });
     const [saving, setSaving] = useState(false);
     const { toast, confirm } = useFeedback();
-    const draft = item && edits.id === item.id ? edits.draft : item ? toDraft(item) : null;
-    const setDraft = (d) => setEdits({ id: item.id, draft: d });
+    const own = item && edits.id === item.id ? edits.changes : NO_CHANGES;
+    const draft = useMemo(() => (item ? { ...toDraft(item), ...own } : null), [item, own]);
+    const setDraft = (d) => setEdits({ id: item.id, changes: { ...own, ...changed(draft, d) } });
     const onClose = () => {
-        setEdits({ id: null, draft: null });
+        stopPreview();
+        setEdits({ id: null, changes: NO_CHANGES });
         close0();
     };
 
-    const changes = useMemo(() => (item && draft ? diff(item, draft) : {}), [item, draft]);
+    const changes = useMemo(() => {
+        if (!item || !draft) return {};
+        const out = changed(toDraft(item), draft);
+        if (out.crop === null) delete out.crop;
+        return out;
+    }, [item, draft]);
     const dirty = Object.keys(changes).length > 0;
+    // A new song is cut only once its fragment was saved in the editor.
+    const configure = !!item && !item.configured && media?.status === 'ready';
 
     const close = async () => {
         if (dirty && !(await confirm({ title: 'Закрити без збереження?', message: 'Зміни в цій пісні буде втрачено.', confirmLabel: 'Закрити', danger: true })))
@@ -63,12 +78,13 @@ export default function SongEditor({ open, item, media, store, onClose: close0 }
     };
 
     const save = async () => {
+        const body = configure ? { ...changes, configured: true } : changes;
         setSaving(true);
         try {
-            const it = await api.patch(`/api/items/${item.id}`, changes);
+            const it = await api.patch(`/api/items/${item.id}`, body);
             store.dispatch({ type: 'item', item: it });
-            if (changes.start !== undefined || changes.end !== undefined || changes.frame || changes.crop || changes.gain_db !== undefined)
-                toast('Збережено. Фрагмент переріжеться за кілька секунд');
+            if (configure) toast('Збережено. Нарізаю фрагмент');
+            else if (it.configured && CUT_FIELDS.some((k) => k in changes)) toast('Збережено. Фрагмент переріжеться за кілька секунд');
             else toast('Збережено');
             onClose();
         } catch (e) {
@@ -85,14 +101,17 @@ export default function SongEditor({ open, item, media, store, onClose: close0 }
             open={open}
             onClose={close}
             width={1120}
-            title={item.answer || media?.title || 'Пісня'}
+            title={item.answer || media?.title || 'Нова пісня'}
             footer={
                 <>
+                    {!item.configured && media?.status !== 'ready' && media?.status !== 'error' && (
+                        <span className="mr-auto text-xs text-faint">Фрагмент можна вибрати, щойно відео завантажиться</span>
+                    )}
                     <Button variant="ghost" onClick={close}>
                         Скасувати
                     </Button>
-                    <Button variant="primary" onClick={save} loading={saving} disabled={!dirty}>
-                        Зберегти
+                    <Button variant="primary" onClick={save} loading={saving} disabled={!dirty && !configure}>
+                        {configure ? 'Зберегти й нарізати' : 'Зберегти'}
                     </Button>
                 </>
             }
@@ -101,7 +120,7 @@ export default function SongEditor({ open, item, media, store, onClose: close0 }
                 <div className="min-w-0">
                     <SourcePanel item={item} media={media} store={store}>
                         {media?.status === 'ready' && (
-                            <ClipEditor media={media} value={draft} onChange={setDraft} />
+                            <ClipEditor itemId={item.id} media={media} value={draft} onChange={setDraft} />
                         )}
                     </SourcePanel>
                 </div>
@@ -129,12 +148,24 @@ export default function SongEditor({ open, item, media, store, onClose: close0 }
 
                     <div>
                         <Toggle
-                            checked={draft.show_video}
+                            checked={draft.show_video && !draft.reverse}
                             onChange={(v) => setDraft({ ...draft, show_video: v })}
+                            disabled={draft.reverse}
                             label="Показувати відео гравцям"
                         />
                         <p className="mt-1.5 mb-0 text-xs text-faint">
-                            Вимкнено — на екрані анімація теми, звучить лише звук.
+                            {draft.reverse ? 'Реверс звучить без відео.' : 'Вимкнено — на екрані анімація теми, звучить лише звук.'}
+                        </p>
+                    </div>
+
+                    <div>
+                        <Toggle
+                            checked={draft.reverse}
+                            onChange={(v) => setDraft({ ...draft, reverse: v, show_video: v ? false : draft.show_video })}
+                            label="Реверс — звук задом наперед"
+                        />
+                        <p className="mt-1.5 mb-0 text-xs text-faint">
+                            У редакторі фрагмент звучить як є; задом наперед — у готовому кліпі після збереження.
                         </p>
                     </div>
 
@@ -279,12 +310,8 @@ function SourcePanel({ item, media, store, children }) {
                         {state.key === 'rendering' && clipProgress != null && ` ${Math.round(clipProgress * 100)}%`}
                     </Chip>
                     {item.clip.error && <span className="text-xs text-bad">{item.clip.error}</span>}
-                    {item.clip.url && (
-                        <a href={item.clip.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-info">
-                            <Eye size={13} /> відкрити кліп
-                        </a>
-                    )}
-                    {media?.status === 'ready' && (
+                    {item.clip.url && <ClipPlayButton item={item} />}
+                    {media?.status === 'ready' && item.configured && (
                         <Button size="sm" variant="ghost" icon={RefreshCw} onClick={rerender}>
                             Перерізати
                         </Button>
@@ -313,6 +340,22 @@ function SourcePanel({ item, media, store, children }) {
                 </div>
             </div>
         </div>
+    );
+}
+
+// ClipPlayButton plays the finished clip: exactly what the audience will hear.
+function ClipPlayButton({ item }) {
+    const { playing, progress } = usePreview(item.id);
+    return (
+        <Button
+            size="sm"
+            variant="ghost"
+            icon={playing ? Pause : Play}
+            onClick={() => togglePreview(item.id, item.clip.url)}
+            style={playing ? { background: `conic-gradient(rgb(255 90 122 / .25) ${progress * 360}deg, transparent 0)` } : undefined}
+        >
+            {playing ? 'Пауза' : 'Готовий кліп'}
+        </Button>
     );
 }
 

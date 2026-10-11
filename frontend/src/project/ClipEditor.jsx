@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Crop, Maximize, Music, Pause, Play, Repeat, StepBack, StepForward } from 'lucide-react';
+import { api } from '../lib/api';
 import { fmtTime } from '../lib/format';
 import { Button, Segmented, Spinner } from '../ui';
 import { cx } from '../lib/cx';
@@ -18,9 +19,119 @@ function defaultCrop(W, H) {
     return { x: Math.round((W - w) / 2), y: Math.round((H - h) / 2), w, h };
 }
 
+// Finished clips are normalised to this loudness (ffmpeg loudnorm).
+const TARGET_LUFS = -16;
+
+// fragmentGain is the linear gain that makes the source sound like the
+// finished clip: the fragment brought to TARGET_LUFS plus the organiser's
+// correction. loud holds the source's loudness per second (LUFS).
+function fragmentGain(loud, start, end, gainDb) {
+    let db = gainDb;
+    const vals = (loud || []).slice(Math.max(0, Math.floor(start)), Math.ceil(end)).filter((v) => v > -70);
+    if (vals.length) {
+        const mean = (xs) => 10 * Math.log10(xs.reduce((sum, v) => sum + 10 ** (v / 10), 0) / xs.length);
+        const ungated = mean(vals);
+        const gated = vals.filter((v) => v > ungated - 10); // relative gate, as in EBU R128
+        db += clamp(TARGET_LUFS - mean(gated.length ? gated : vals), -20, 20);
+    }
+    return 10 ** (db / 20);
+}
+
+// usePreviewVolume routes the editor's player through WebAudio so the
+// fragment plays as loud as the finished clip will be.
+function usePreviewVolume(videoRef, itemId, media, value) {
+    const [loud, setLoud] = useState(null);
+    const graph = useRef(null);
+    useEffect(() => {
+        let alive = true;
+        api.get(`/api/items/${itemId}/loudness`)
+            .then((r) => alive && setLoud(r.loudness || []))
+            .catch(() => {});
+        return () => {
+            alive = false;
+        };
+    }, [itemId, media.id, media.status]);
+
+    const gain = useMemo(() => fragmentGain(loud, value.start, value.end, value.gain_db), [loud, value.start, value.end, value.gain_db]);
+
+    useEffect(() => {
+        const g = graph.current;
+        if (g) g.gain.gain.setTargetAtTime(gain, g.ctx.currentTime, 0.03);
+    }, [gain]);
+    useEffect(() => () => graph.current?.ctx.close().catch(() => {}), []);
+
+    // Called from a click: browsers only start audio after a user gesture.
+    return useCallback(() => {
+        if (graph.current) {
+            graph.current.ctx.resume().catch(() => {});
+            return;
+        }
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx || !videoRef.current) return;
+        try {
+            const ctx = new Ctx();
+            const src = ctx.createMediaElementSource(videoRef.current);
+            const g = ctx.createGain();
+            g.gain.value = gain;
+            // Like the true-peak limit of loudnorm: loud boosts must not clip.
+            const limiter = ctx.createDynamicsCompressor();
+            limiter.threshold.value = -1.5;
+            limiter.knee.value = 0;
+            limiter.ratio.value = 20;
+            limiter.attack.value = 0.003;
+            limiter.release.value = 0.15;
+            src.connect(g).connect(limiter).connect(ctx.destination);
+            graph.current = { ctx, gain: g };
+        } catch {
+            /* WebAudio unavailable: the player keeps its own volume */
+        }
+    }, [videoRef, gain]);
+}
+
+// NumberField lets a number be typed freely (any digit can be erased) and
+// applies it on Enter or when the field loses focus. Arrows step the value.
+function NumberField({ value, onCommit, step = 1, className }) {
+    const [draft, setDraft] = useState(null);
+    const cancelled = useRef(false);
+    const shown = String(r1(value)).replace('.', ',');
+    const parse = (t) => Number(String(t).trim().replace(',', '.'));
+    const commit = () => {
+        if (draft === null || cancelled.current) {
+            cancelled.current = false;
+            setDraft(null);
+            return;
+        }
+        const n = parse(draft);
+        setDraft(null);
+        if (draft.trim() !== '' && Number.isFinite(n)) onCommit(n);
+    };
+    return (
+        <input
+            type="text"
+            inputMode="decimal"
+            className={className}
+            value={draft ?? shown}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter') commit();
+                else if (e.key === 'Escape') {
+                    cancelled.current = true;
+                    e.currentTarget.blur();
+                } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    const n = parse(draft ?? value);
+                    setDraft(null);
+                    if (Number.isFinite(n)) onCommit(n + (e.key === 'ArrowUp' ? step : -step));
+                }
+            }}
+        />
+    );
+}
+
 // ClipEditor picks the fragment (start/end) and the frame (whole picture or a
 // 16:9 crop) on the downloaded source video.
-export default function ClipEditor({ media, value, onChange }) {
+export default function ClipEditor({ itemId, media, value, onChange }) {
     const videoRef = useRef(null);
     const [cur, setCur] = useState(value.start);
     // null when stopped, 'fragment' while previewing the clip, 'free' otherwise.
@@ -32,6 +143,7 @@ export default function ClipEditor({ media, value, onChange }) {
     const len = value.end - value.start;
 
     const set = useCallback((patch) => onChange({ ...value, ...patch }), [value, onChange]);
+    const startAudio = usePreviewVolume(videoRef, itemId, media, value);
 
     const setRange = useCallback(
         (start, end) => {
@@ -79,6 +191,7 @@ export default function ClipEditor({ media, value, onChange }) {
             v.pause();
             return;
         }
+        startAudio();
         setPlayMode('fragment');
         v.currentTime = value.start;
         v.play().catch(() => setPlayMode(null));
@@ -89,6 +202,7 @@ export default function ClipEditor({ media, value, onChange }) {
         if (!v) return;
         if (playMode) v.pause();
         else {
+            startAudio();
             setPlayMode('free');
             v.play().catch(() => setPlayMode(null));
         }
@@ -202,16 +316,11 @@ export default function ClipEditor({ media, value, onChange }) {
                     <div className="label">Початок</div>
                     <div className="flex items-center gap-1.5">
                         <Button size="sm" icon={StepBack} onClick={() => setRange(value.start - 0.5, value.end - 0.5)} title="−0,5 с" />
-                        <input
-                            type="number"
-                            step="0.1"
-                            min="0"
+                        <NumberField
+                            step={0.1}
                             className="field w-24 py-1 text-center font-mono"
                             value={value.start}
-                            onChange={(e) => {
-                                const s = Number(e.target.value) || 0;
-                                setRange(s, s + len);
-                            }}
+                            onCommit={(s) => setRange(s, s + len)}
                         />
                         <Button size="sm" icon={StepForward} onClick={() => setRange(value.start + 0.5, value.end + 0.5)} title="+0,5 с" />
                         <Button size="sm" variant="ghost" onClick={() => setRange(cur, cur + len)} title="Перенести фрагмент на поточний момент">
@@ -222,13 +331,11 @@ export default function ClipEditor({ media, value, onChange }) {
                 <div className="panel bg-panel-2 p-3">
                     <div className="label">Тривалість, с</div>
                     <div className="flex flex-wrap items-center gap-1.5">
-                        <input
-                            type="number"
-                            step="0.5"
-                            min="1"
+                        <NumberField
+                            step={0.5}
                             className="field w-20 py-1 text-center font-mono"
-                            value={r1(len)}
-                            onChange={(e) => setRange(value.start, value.start + (Number(e.target.value) || 1))}
+                            value={len}
+                            onCommit={(n) => setRange(value.start, value.start + Math.max(n, 1))}
                         />
                         {[10, 15, 20, 30].map((n) => (
                             <Button

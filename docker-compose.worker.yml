@@ -1,0 +1,32 @@
+# A worker that downloads and cuts videos for a Melotrack server on another
+# machine (see README → "Окремий сервер для завантаження й нарізки").
+# On the worker machine, next to this file:
+#   1. .env with WORKER_TOKEN (the same as on the main server) and, if needed,
+#      YTDLP_PROXY / YTDLP_COOKIES;
+#   2. docker compose -f docker-compose.worker.yml up -d --build
+services:
+  worker:
+    build: .
+    image: melotrack:latest
+    restart: unless-stopped
+    command: ["worker"]
+    env_file: .env
+    ports:
+      # Only the main server has to reach the worker: bind it to the VPN
+      # address, e.g. WORKER_PORT=10.8.0.2:8081
+      - "${WORKER_PORT:-8081}:8081"
+    environment:
+      WORKER_LISTEN: 0.0.0.0:8081
+      DATA_DIR: /data
+      # Shown on the main server's "Показ" tab.
+      WORKER_NAME: ${WORKER_NAME:-melotrack-worker}
+    volumes:
+      # Cached source videos (up to WORKER_CACHE_GB) and temporary files.
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/healthz"]
+      interval: 30s
+      timeout: 5s
+      start_period: 90s
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

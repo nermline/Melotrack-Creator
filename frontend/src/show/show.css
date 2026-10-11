@@ -99,6 +99,8 @@
   letter-spacing: var(--title-spacing);
   line-height: 1.05;
   text-wrap: balance;
+  /* Playfair (vinyl) defaults to old-style figures that sink below the line. */
+  font-variant-numeric: lining-nums;
 }
 
 .stage .title-xl {

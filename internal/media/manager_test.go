@@ -21,7 +21,8 @@ func newTestManager(t *testing.T) (*Manager, *Storage) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := NewManager(db, st, &YtDlp{Path: "/nonexistent"}, &FFmpeg{FFmpeg: "/nonexistent", FFprobe: "/nonexistent"}, nil,
+	ff := &FFmpeg{FFmpeg: "/nonexistent", FFprobe: "/nonexistent"}
+	m := NewManager(db, st, ff, nil, LocalDownloader{YT: &YtDlp{Path: "/nonexistent"}}, LocalRenderer{FF: ff},
 		Options{DownloadWorkers: 1, RenderWorkers: 1, ClipHeight: 720})
 	return m, st
 }
@@ -85,5 +86,63 @@ func TestSweepKeepsReferencedAndRecentFiles(t *testing.T) {
 		if (err == nil) != want {
 			t.Errorf("%s exists=%v, want %v", n, err == nil, want)
 		}
+	}
+}
+
+type offlineDownloader struct{}
+
+func (offlineDownloader) Download(context.Context, string, string, func(float64)) (DownloadResult, error) {
+	return DownloadResult{}, ErrWorkerUnavailable
+}
+
+// When the download worker is offline the song waits instead of failing.
+func TestWorkerOfflineKeepsDownloadPending(t *testing.T) {
+	m, _ := newTestManager(t)
+	m.dl = offlineDownloader{}
+	m.opt.RetryDelay = time.Hour
+	med := store.Media{YouTubeID: "dQw4w9WgXcQ", Status: store.MediaPending, SourceKind: "youtube"}
+	m.db.Create(&med)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	m.Start(ctx)
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		var got store.Media
+		m.db.First(&got, med.ID)
+		if got.ErrorCode == "worker_offline" {
+			if got.Status != store.MediaPending {
+				t.Fatalf("status = %s, want pending", got.Status)
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("offline worker was not reported")
+}
+
+// A pasted song is not cut until the organiser saves it in the editor.
+func TestUnconfiguredItemIsNotRendered(t *testing.T) {
+	m, st := newTestManager(t)
+	os.WriteFile(filepath.Join(st.SourceDir(), "src.mp4"), []byte("x"), 0o644)
+	med := store.Media{YouTubeID: "dQw4w9WgXcQ", Status: store.MediaReady, SourceKind: "youtube", SourceFile: "src.mp4"}
+	m.db.Create(&med)
+	proj := store.Project{Title: "p"}
+	m.db.Create(&proj)
+	cat := store.Category{ProjectID: proj.ID, Title: "c"}
+	m.db.Create(&cat)
+	it := store.Item{CategoryID: cat.ID, MediaID: med.ID, EndSec: 15, Frame: store.FrameFit, ClipStatus: store.ClipPending}
+	m.db.Omit("Media").Create(&it)
+
+	m.Reconcile(it.ID, 0)
+	if _, renders := m.QueueSizes(); renders != 0 {
+		t.Fatalf("unconfigured item queued for rendering")
+	}
+	m.db.Model(&it).Update("configured", true)
+	m.Reconcile(it.ID, 0)
+	time.Sleep(50 * time.Millisecond)
+	if _, renders := m.QueueSizes(); renders != 1 {
+		t.Fatalf("configured item not queued (renders = %d)", renders)
 	}
 }

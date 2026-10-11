@@ -155,9 +155,14 @@ export function allItems(project) {
 export function songState(item, media) {
     if (!media) return { key: 'unknown', tone: 'muted', label: '—' };
     if (media.status === 'error') return { key: 'download_error', tone: 'bad', label: 'Помилка завантаження' };
-    if (media.status === 'pending') return { key: 'queued', tone: 'muted', label: 'У черзі' };
+    if (media.status === 'pending') {
+        if (media.error_code === 'worker_offline') return { key: 'queued', tone: 'warn', label: 'Чекає сервер завантаження' };
+        return { key: 'queued', tone: 'muted', label: 'У черзі' };
+    }
     if (media.status === 'downloading')
         return { key: 'downloading', tone: 'info', label: media.kind === 'upload' ? 'Обробка файлу' : 'Завантаження' };
+    // A new song is cut only after the organiser picked the fragment.
+    if (!item.configured) return { key: 'unconfigured', tone: 'warn', label: 'Оберіть фрагмент' };
     switch (item.clip.status) {
         case 'ready':
             return { key: 'ready', tone: 'ok', label: 'Готово' };
@@ -166,6 +171,7 @@ export function songState(item, media) {
         case 'error':
             return { key: 'clip_error', tone: 'bad', label: 'Помилка нарізки' };
         default:
+            if (item.clip.error) return { key: 'pending', tone: 'warn', label: 'Чекає сервер нарізки' };
             return { key: 'pending', tone: 'muted', label: item.clip.url ? 'Оновлюється' : 'Очікує нарізки' };
     }
 }

@@ -26,7 +26,7 @@ func TestRestoreSavedPosition(t *testing.T) {
 	for raw, want := range cases {
 		db.Model(&p).Update("game_state", raw)
 		ss := NewSessions(db)
-		s, err := ss.Get(p.ID)
+		s, err := ss.Get(Key{Project: p.ID})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -142,6 +142,17 @@ ALTER TABLE teams DROP COLUMN bonus;
 	`
 UPDATE scores SET points = 0 WHERE points < 0;
 `,
+	// 4: category owner and scoring rules, reversed songs, clips cut only once
+	// the organiser has picked the fragment, loudness map for the editor, and a
+	// content hash so remote workers can cache sources.
+	`
+ALTER TABLE categories ADD COLUMN responsible TEXT NOT NULL DEFAULT '';
+ALTER TABLE categories ADD COLUMN criteria TEXT NOT NULL DEFAULT '';
+ALTER TABLE items ADD COLUMN reverse INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE items ADD COLUMN configured INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE media ADD COLUMN loudness TEXT NOT NULL DEFAULT '';
+ALTER TABLE media ADD COLUMN source_hash TEXT NOT NULL DEFAULT '';
+`,
 }
 
 func migrate(db *gorm.DB, path string, legacy LegacyImport) error {

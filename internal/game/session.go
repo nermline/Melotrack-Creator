@@ -13,58 +13,111 @@ import (
 	"gorm.io/gorm"
 )
 
-// Sessions keeps one live show per project.
+// Key identifies a show. The project's real show (screen + remote) has an
+// empty Session; every rehearsal has its own private one, so organisers
+// checking their categories never step on each other or on the real show.
+type Key struct {
+	Project uint
+	Session string
+}
+
+// Private reports whether this is a rehearsal (not saved, dropped when idle).
+func (k Key) Private() bool { return k.Session != "" }
+
+// Sessions keeps the live shows.
 type Sessions struct {
 	db       *gorm.DB
 	mu       sync.Mutex
-	m        map[uint]*Session
-	onChange func(projectID uint)
+	m        map[Key]*Session
+	idle     map[Key]*time.Timer
+	onChange func(Key)
 }
 
 func NewSessions(db *gorm.DB) *Sessions {
-	return &Sessions{db: db, m: map[uint]*Session{}, onChange: func(uint) {}}
+	return &Sessions{db: db, m: map[Key]*Session{}, idle: map[Key]*time.Timer{}, onChange: func(Key) {}}
 }
 
 // OnChange registers the callback that pushes new state to connected devices.
-func (ss *Sessions) OnChange(fn func(projectID uint)) { ss.onChange = fn }
+func (ss *Sessions) OnChange(fn func(Key)) { ss.onChange = fn }
 
 var ErrNoProject = errors.New("project not found")
 
-func (ss *Sessions) Get(projectID uint) (*Session, error) {
+func (ss *Sessions) Get(k Key) (*Session, error) {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
-	if s, ok := ss.m[projectID]; ok {
+	if t, ok := ss.idle[k]; ok {
+		t.Stop()
+		delete(ss.idle, k)
+	}
+	if s, ok := ss.m[k]; ok {
 		return s, nil
 	}
-	s, err := newSession(ss.db, projectID, func() { ss.onChange(projectID) })
+	s, err := newSession(ss.db, k, func() { ss.onChange(k) })
 	if err != nil {
 		return nil, err
 	}
-	ss.m[projectID] = s
+	ss.m[k] = s
 	return s, nil
 }
 
-// Existing returns the session if one is loaded.
-func (ss *Sessions) Existing(projectID uint) *Session {
+// ReleaseWhenIdle drops a rehearsal after `after` unless someone reconnects
+// (Get cancels it) or stillIdle reports otherwise.
+func (ss *Sessions) ReleaseWhenIdle(k Key, after time.Duration, stillIdle func() bool) {
+	if !k.Private() {
+		return
+	}
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
-	return ss.m[projectID]
+	if t, ok := ss.idle[k]; ok {
+		t.Stop()
+	}
+	ss.idle[k] = time.AfterFunc(after, func() {
+		if !stillIdle() {
+			return
+		}
+		ss.mu.Lock()
+		s := ss.m[k]
+		delete(ss.m, k)
+		delete(ss.idle, k)
+		ss.mu.Unlock()
+		if s != nil {
+			s.close()
+		}
+	})
 }
 
-// Refresh reloads project details (title, theme, teams) into a running session.
+func (ss *Sessions) ofProject(projectID uint) []*Session {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	var out []*Session
+	for k, s := range ss.m {
+		if k.Project == projectID {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// Refresh reloads project details (title, theme, teams) into its running shows.
 func (ss *Sessions) Refresh(projectID uint) {
-	if s := ss.Existing(projectID); s != nil {
+	for _, s := range ss.ofProject(projectID) {
 		s.refreshInfo()
-		ss.onChange(projectID)
+		ss.onChange(s.key)
 	}
 }
 
+// Drop ends every show of a deleted project.
 func (ss *Sessions) Drop(projectID uint) {
 	ss.mu.Lock()
-	s := ss.m[projectID]
-	delete(ss.m, projectID)
+	var closing []*Session
+	for k, s := range ss.m {
+		if k.Project == projectID {
+			closing = append(closing, s)
+			delete(ss.m, k)
+		}
+	}
 	ss.mu.Unlock()
-	if s != nil {
+	for _, s := range closing {
 		s.close()
 	}
 }
@@ -77,6 +130,7 @@ type info struct {
 }
 
 type Session struct {
+	key       Key
 	projectID uint
 	db        *gorm.DB
 	changed   func()
@@ -111,7 +165,8 @@ type savedState struct {
 	Board  []Standing `json:"board,omitempty"`
 }
 
-func newSession(db *gorm.DB, projectID uint, changed func()) (*Session, error) {
+func newSession(db *gorm.DB, key Key, changed func()) (*Session, error) {
+	projectID := key.Project
 	var p store.Project
 	if err := db.First(&p, projectID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -119,12 +174,15 @@ func newSession(db *gorm.DB, projectID uint, changed func()) (*Session, error) {
 		}
 		return nil, err
 	}
-	s := &Session{projectID: projectID, db: db, changed: changed,
+	s := &Session{key: key, projectID: projectID, db: db, changed: changed,
 		saveKick: make(chan struct{}, 1), done: make(chan struct{})}
 	s.refreshInfo()
 	s.eng = NewEngine(s, func() int64 { return time.Now().UnixMilli() })
-	s.restore(p.GameState)
-	go s.saver()
+	if !key.Private() {
+		// Only the real show survives a restart; rehearsals start from the top.
+		s.restore(p.GameState)
+		go s.saver()
+	}
 	return s, nil
 }
 
@@ -196,6 +254,9 @@ func (s *Session) afterChange() {
 			s.mu.Unlock()
 			s.changed()
 		})
+	}
+	if s.key.Private() {
+		return
 	}
 	st := savedState{Phase: s.eng.Phase, Cat: s.eng.Cat, Item: s.eng.Item, Reveal: s.eng.Reveal, Board: s.eng.Board}
 	data, _ := json.Marshal(st)
@@ -278,7 +339,7 @@ func LoadProgram(db *gorm.DB, projectID uint) []Category {
 				Answer:     it.Answer,
 				ImageURL:   media.AnswerImageURL(&it, &it.Media),
 				ClipURL:    media.ClipURL(it.ClipFile),
-				ShowVideo:  it.ShowVideo,
+				ShowVideo:  it.ShowVideo && !it.Reverse,
 				DurationMs: int64(it.ClipSeconds() * 1000),
 				ClipReady:  it.ClipStatus == store.ClipReady,
 			})
