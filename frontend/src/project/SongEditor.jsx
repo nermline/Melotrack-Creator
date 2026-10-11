@@ -161,12 +161,9 @@ export default function SongEditor({ open, item, media, store, onClose: close0 }
                         <Toggle
                             checked={draft.reverse}
                             onChange={(v) => setDraft({ ...draft, reverse: v })}
-                            label="Реверс — задом наперед"
+                            label="Реверс"
                         />
-                        <p className="mt-1.5 mb-0 text-xs text-faint">
-                            Звук і відео йдуть задом наперед. У редакторі фрагмент грає як є — реверс чути в готовому кліпі після
-                            збереження.
-                        </p>
+                        <p className="mt-1.5 mb-0 text-xs text-faint">Зміни видно лише на прев'ю та репетиції</p>
                     </div>
 
                     <Field

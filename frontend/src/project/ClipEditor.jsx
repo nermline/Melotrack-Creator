@@ -337,7 +337,7 @@ export default function ClipEditor({ itemId, media, value, onChange }) {
                             value={len}
                             onCommit={(n) => setRange(value.start, value.start + Math.max(n, 1))}
                         />
-                        {[10, 15, 20, 30].map((n) => (
+                        {[3, 10, 15, 20].map((n) => (
                             <Button
                                 key={n}
                                 size="sm"
