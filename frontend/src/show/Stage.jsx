@@ -212,52 +212,110 @@ function Phase({ view, sec, frac, preview, videoOn }) {
     }
 }
 
+// useShrinkToFit sets --k on the box's content to the largest scale (up to 1)
+// at which the content fits the box's height.
+function useShrinkToFit(ref, key) {
+    useLayoutEffect(() => {
+        const box = ref.current;
+        if (!box) return;
+        const inner = box.firstElementChild;
+        let alive = true;
+        let raf = 0;
+        const fits = (k) => {
+            inner.style.setProperty('--k', String(k));
+            return inner.offsetHeight <= box.clientHeight;
+        };
+        const fit = () => {
+            if (!alive || fits(1)) return;
+            let lo = 0.3;
+            let hi = 1;
+            for (let i = 0; i < 8; i++) {
+                const mid = (lo + hi) / 2;
+                if (fits(mid)) lo = mid;
+                else hi = mid;
+            }
+            fits(lo);
+        };
+        fit();
+        // Web fonts arrive late and change text widths; the stage also resizes.
+        document.fonts?.ready.then(fit);
+        const ro = new ResizeObserver(() => {
+            cancelAnimationFrame(raf);
+            raf = requestAnimationFrame(fit);
+        });
+        ro.observe(box);
+        return () => {
+            alive = false;
+            ro.disconnect();
+            cancelAnimationFrame(raf);
+        };
+    }, [ref, key]);
+}
+
+// k scales a size in cqmin by the fit factor of the welcome slide.
+const k = (n) => `calc(${n}cqmin * var(--k, 1))`;
+
+// Welcome shrinks its content until everything fits above "Скоро почнемо":
+// a show can have many categories and teams.
 function Welcome({ view }) {
     const teams = view.teams || [];
+    const cats = view.categories || [];
+    const boxRef = useRef(null);
+    useShrinkToFit(boxRef, [view.title, ...cats, '', ...teams].join('\n'));
+    const pill = { fontSize: k(3.3), padding: `${k(1)} ${k(2.6)}` };
     return (
-        <div className="layer">
-            <motion.div className="eyebrow-s" {...rise(0)}>
-                Музичний квіз
-            </motion.div>
-            <motion.div className="display title-xl" style={{ marginTop: '2cqmin' }} {...rise(0.1)}>
-                {view.title}
-            </motion.div>
-            {view.categories?.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.2cqmin', marginTop: '4cqmin', justifyContent: 'center' }}>
-                    {view.categories.map((c, i) => (
-                        <motion.span key={c + i} className="pill" {...rise(0.3 + i * 0.06)}>
-                            {c}
-                        </motion.span>
-                    ))}
-                </div>
-            )}
-            {teams.length > 0 && (
-                <div style={{ marginTop: '5cqmin', width: '100%' }}>
-                    <div className="sub" style={{ marginBottom: '1.5cqmin' }}>
-                        {teams.length} {plural(teams.length, 'команда', 'команди', 'команд')} вже з нами
-                    </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1cqmin', justifyContent: 'center', maxHeight: '22cqh', overflow: 'hidden' }}>
-                        <AnimatePresence>
-                            {teams.map((t) => (
-                                <motion.span
-                                    key={t}
-                                    layout
-                                    className="pill"
-                                    style={{ color: 'var(--a2)' }}
-                                    initial={{ opacity: 0, scale: 0.5 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    transition={{ type: 'spring', stiffness: 300, damping: 18 }}
-                                >
-                                    {t}
+        <div className="layer" style={{ paddingBottom: '3.5cqmin' }}>
+            <div ref={boxRef} style={{ flex: 1, minHeight: 0, width: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <motion.div className="eyebrow-s" style={{ fontSize: k(3.3) }} {...rise(0)}>
+                        Музичний квіз
+                    </motion.div>
+                    <motion.div
+                        className="display title-xl"
+                        // The title shrinks less than the lists below it.
+                        style={{ marginTop: k(2), fontSize: 'calc(11cqmin * max(var(--k, 1), 0.7))' }}
+                        {...rise(0.1)}
+                    >
+                        {view.title}
+                    </motion.div>
+                    {cats.length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: k(1.2), marginTop: k(4), justifyContent: 'center' }}>
+                            {cats.map((c, i) => (
+                                <motion.span key={c + i} className="pill" style={pill} {...rise(0.3 + i * 0.04)}>
+                                    {c}
                                 </motion.span>
                             ))}
-                        </AnimatePresence>
-                    </div>
+                        </div>
+                    )}
+                    {teams.length > 0 && (
+                        <div style={{ marginTop: k(5), width: '100%' }}>
+                            <div className="sub" style={{ fontSize: k(4), marginBottom: k(1.5) }}>
+                                {teams.length} {plural(teams.length, 'команда', 'команди', 'команд')} вже з нами
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: k(1), justifyContent: 'center' }}>
+                                <AnimatePresence>
+                                    {teams.map((t) => (
+                                        <motion.span
+                                            key={t}
+                                            layout
+                                            className="pill"
+                                            style={{ ...pill, color: 'var(--a2)' }}
+                                            initial={{ opacity: 0, scale: 0.5 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            transition={{ type: 'spring', stiffness: 300, damping: 18 }}
+                                        >
+                                            {t}
+                                        </motion.span>
+                                    ))}
+                                </AnimatePresence>
+                            </div>
+                        </div>
+                    )}
                 </div>
-            )}
+            </div>
             <motion.div
                 className="sub"
-                style={{ position: 'absolute', bottom: '4cqmin', left: 0, right: 0, textAlign: 'center' }}
+                style={{ marginTop: '2cqmin', flexShrink: 0 }}
                 animate={{ opacity: [0.35, 1, 0.35] }}
                 transition={{ duration: 2.4, repeat: Infinity }}
             >

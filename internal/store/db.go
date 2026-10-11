@@ -153,6 +153,10 @@ ALTER TABLE items ADD COLUMN configured INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE media ADD COLUMN loudness TEXT NOT NULL DEFAULT '';
 ALTER TABLE media ADD COLUMN source_hash TEXT NOT NULL DEFAULT '';
 `,
+	// 5: another correct answer (e.g. the English title), shown to scorers only.
+	`
+ALTER TABLE items ADD COLUMN alt_answer TEXT NOT NULL DEFAULT '';
+`,
 }
 
 func migrate(db *gorm.DB, path string, legacy LegacyImport) error {

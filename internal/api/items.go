@@ -232,6 +232,7 @@ func (s *Server) receiveUpload(c *gin.Context, field string) (path, name string,
 
 type itemPatch struct {
 	Answer     *string  `json:"answer"`
+	AltAnswer  *string  `json:"alt_answer"`
 	ShowVideo  *bool    `json:"show_video"`
 	Start      *float64 `json:"start"`
 	End        *float64 `json:"end"`
@@ -290,6 +291,13 @@ func (s *Server) updateItem(c *gin.Context) {
 				return validationError("Відповідь задовга (до 300 символів)")
 			}
 			it.Answer = a
+		}
+		if in.AltAnswer != nil {
+			a := strings.Join(strings.Fields(*in.AltAnswer), " ")
+			if utf8.RuneCountInString(a) > 300 {
+				return validationError("Альтернативна відповідь задовга (до 300 символів)")
+			}
+			it.AltAnswer = a
 		}
 		if in.ShowVideo != nil {
 			it.ShowVideo = *in.ShowVideo

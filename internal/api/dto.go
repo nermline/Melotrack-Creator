@@ -67,6 +67,7 @@ type itemDTO struct {
 	Position   int     `json:"position"`
 	MediaID    uint    `json:"media_id"`
 	Answer     string  `json:"answer"`
+	AltAnswer  string  `json:"alt_answer"` // for scorers only, never sent to screens
 	ShowVideo  bool    `json:"show_video"`
 	Start      float64 `json:"start"`
 	End        float64 `json:"end"`
@@ -83,7 +84,7 @@ type itemDTO struct {
 func toItemDTO(it *store.Item) itemDTO {
 	d := itemDTO{
 		ID: it.ID, CategoryID: it.CategoryID, Position: it.Position, MediaID: it.MediaID,
-		Answer: it.Answer, ShowVideo: it.ShowVideo,
+		Answer: it.Answer, AltAnswer: it.AltAnswer, ShowVideo: it.ShowVideo,
 		Start: it.StartSec, End: it.EndSec, GainDB: it.GainDB, Frame: it.Frame,
 		Reverse: it.Reverse, Configured: it.Configured,
 		ImageURL:  media.ImageURL(it.ImageFile),

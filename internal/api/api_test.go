@@ -258,6 +258,12 @@ func TestCategoryAndItemSettings(t *testing.T) {
 		t.Fatalf("a reversed song may show its (reversed) video: %v", upd)
 	}
 
+	alt := e.do("PATCH", path, map[string]any{"alt_answer": "  Never Gonna\n Give You Up "}, http.StatusOK)
+	if alt["alt_answer"] != "Never Gonna Give You Up" {
+		t.Fatalf("alt answer: %v", alt)
+	}
+	e.do("PATCH", path, map[string]any{"alt_answer": strings.Repeat("x", 301)}, http.StatusBadRequest)
+
 	loud := e.do("GET", path+"/loudness", nil, http.StatusOK)
 	if _, ok := loud["loudness"]; !ok || int(loud["media_id"].(float64)) == 0 {
 		t.Fatalf("loudness: %v", loud)
@@ -266,7 +272,8 @@ func TestCategoryAndItemSettings(t *testing.T) {
 	dup := id(e.do("POST", fmt.Sprintf("/api/projects/%d/duplicate", pid), map[string]string{"title": "Копія"}, http.StatusCreated))
 	dc := e.do("GET", fmt.Sprintf("/api/projects/%d", dup), nil, http.StatusOK)["categories"].([]any)[0].(map[string]any)
 	di := dc["items"].([]any)[0].(map[string]any)
-	if dc["criteria"] != cat["criteria"] || dc["responsible"] != cat["responsible"] || di["reverse"] != true || di["configured"] != true {
+	if dc["criteria"] != cat["criteria"] || dc["responsible"] != cat["responsible"] || di["reverse"] != true || di["configured"] != true ||
+		di["alt_answer"] != "Never Gonna Give You Up" {
 		t.Fatalf("duplicate lost settings: %v", dc)
 	}
 }

@@ -23,6 +23,7 @@ import { songState } from './useProjectStore';
 function toDraft(item) {
     return {
         answer: item.answer,
+        alt_answer: item.alt_answer || '',
         show_video: item.show_video,
         reverse: item.reverse,
         gain_db: item.gain_db,
@@ -144,6 +145,16 @@ export default function SongEditor({ open, item, media, store, onClose: close0 }
                                 <Wand2 size={12} className="shrink-0" /> З YouTube: {media.suggested}
                             </button>
                         )}
+                    </Field>
+
+                    <Field label="Альтернативна відповідь" hint="Видно лише на екрані оцінювання">
+                        <input
+                            className="field"
+                            maxLength={300}
+                            value={draft.alt_answer}
+                            placeholder="Теж правильна, напр. назва англійською"
+                            onChange={(e) => setDraft({ ...draft, alt_answer: e.target.value })}
+                        />
                     </Field>
 
                     <div>

@@ -224,7 +224,11 @@ function CategoryScoring({ cat, store }) {
                             <tr className="text-xs text-faint">
                                 <th className="sticky left-0 z-10 bg-panel px-4 py-2 text-left font-semibold">Команда</th>
                                 {cat.items.map((it, i) => (
-                                    <th key={it.id} className="px-1 py-2 text-center font-semibold" title={it.answer}>
+                                    <th
+                                        key={it.id}
+                                        className="px-1 py-2 text-center font-semibold"
+                                        title={it.alt_answer ? `${it.answer}\nабо: ${it.alt_answer}` : it.answer}
+                                    >
                                         {i + 1}
                                     </th>
                                 ))}
@@ -251,7 +255,7 @@ function CategoryScoring({ cat, store }) {
                                                         value={v}
                                                         row={row}
                                                         col={col}
-                                                        title={`${t.name} · ${col + 1}. ${it.answer || 'пісня'}`}
+                                                        title={`${t.name} · ${col + 1}. ${it.answer || 'пісня'}${it.alt_answer ? ` (або: ${it.alt_answer})` : ''}`}
                                                         onCommit={(points) => put(t, it, points)}
                                                         onMove={move}
                                                     />
@@ -306,7 +310,10 @@ function CategoryScoring({ cat, store }) {
                             {cat.items.map((it, i) => (
                                 <li key={it.id} className="flex gap-3 border-b border-line px-4 py-2 text-sm last:border-b-0">
                                     <span className="w-5 shrink-0 text-right font-display font-bold text-faint">{i + 1}</span>
-                                    <span className={it.answer ? '' : 'text-faint italic'}>{it.answer || 'відповідь не вказана'}</span>
+                                    <span className="min-w-0">
+                                        <span className={it.answer ? '' : 'text-faint italic'}>{it.answer || 'відповідь не вказана'}</span>
+                                        {it.alt_answer && <span className="block text-xs text-dim">або: {it.alt_answer}</span>}
+                                    </span>
                                 </li>
                             ))}
                         </ol>

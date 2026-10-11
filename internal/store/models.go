@@ -100,6 +100,7 @@ type Item struct {
 	Position   int
 	MediaID    uint
 	Answer     string
+	AltAnswer  string // another correct answer, shown to scorers only
 	ImageFile  string
 	ShowVideo  bool
 	StartSec   float64
