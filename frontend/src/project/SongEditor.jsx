@@ -148,24 +148,24 @@ export default function SongEditor({ open, item, media, store, onClose: close0 }
 
                     <div>
                         <Toggle
-                            checked={draft.show_video && !draft.reverse}
+                            checked={draft.show_video}
                             onChange={(v) => setDraft({ ...draft, show_video: v })}
-                            disabled={draft.reverse}
                             label="Показувати відео гравцям"
                         />
                         <p className="mt-1.5 mb-0 text-xs text-faint">
-                            {draft.reverse ? 'Реверс звучить без відео.' : 'Вимкнено — на екрані анімація теми, звучить лише звук.'}
+                            Вимкнено — на екрані анімація теми, звучить лише звук.
                         </p>
                     </div>
 
                     <div>
                         <Toggle
                             checked={draft.reverse}
-                            onChange={(v) => setDraft({ ...draft, reverse: v, show_video: v ? false : draft.show_video })}
-                            label="Реверс — звук задом наперед"
+                            onChange={(v) => setDraft({ ...draft, reverse: v })}
+                            label="Реверс — задом наперед"
                         />
                         <p className="mt-1.5 mb-0 text-xs text-faint">
-                            У редакторі фрагмент звучить як є; задом наперед — у готовому кліпі після збереження.
+                            Звук і відео йдуть задом наперед. У редакторі фрагмент грає як є — реверс чути в готовому кліпі після
+                            збереження.
                         </p>
                     </div>
 

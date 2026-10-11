@@ -254,12 +254,8 @@ func TestCategoryAndItemSettings(t *testing.T) {
 	}
 	path := fmt.Sprintf("/api/items/%d", id(it))
 	upd := e.do("PATCH", path, map[string]any{"show_video": true, "reverse": true, "configured": true}, http.StatusOK)
-	if upd["reverse"] != true || upd["show_video"] != false || upd["configured"] != true {
-		t.Fatalf("reverse is sound only: %v", upd)
-	}
-	upd = e.do("PATCH", path, map[string]any{"show_video": true}, http.StatusOK)
-	if upd["show_video"] != false {
-		t.Fatalf("video stays off while reversed: %v", upd)
+	if upd["reverse"] != true || upd["show_video"] != true || upd["configured"] != true {
+		t.Fatalf("a reversed song may show its (reversed) video: %v", upd)
 	}
 
 	loud := e.do("GET", path+"/loudness", nil, http.StatusOK)

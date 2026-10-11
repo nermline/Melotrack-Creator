@@ -339,7 +339,7 @@ func LoadProgram(db *gorm.DB, projectID uint) []Category {
 				Answer:     it.Answer,
 				ImageURL:   media.AnswerImageURL(&it, &it.Media),
 				ClipURL:    media.ClipURL(it.ClipFile),
-				ShowVideo:  it.ShowVideo && !it.Reverse,
+				ShowVideo:  it.ShowVideo,
 				DurationMs: int64(it.ClipSeconds() * 1000),
 				ClipReady:  it.ClipStatus == store.ClipReady,
 			})

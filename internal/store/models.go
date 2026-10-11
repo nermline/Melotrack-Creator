@@ -110,7 +110,7 @@ type Item struct {
 	CropY      int
 	CropW      int
 	CropH      int
-	// Reverse plays the fragment's audio backwards (and never shows the video).
+	// Reverse plays the fragment backwards, sound and picture.
 	Reverse bool
 	// Configured is set once the organiser saved the fragment in the editor;
 	// only then is the clip cut (new songs are not cut with default settings).

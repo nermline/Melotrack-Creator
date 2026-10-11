@@ -195,10 +195,20 @@ function startDrag(e, controls) {
     e.preventDefault();
     window.getSelection()?.removeAllRanges();
     document.body.classList.add('select-none');
-    const done = () => {
+    const [x0, y0] = [e.clientX, e.clientY];
+    const done = (up) => {
         document.body.classList.remove('select-none');
         window.removeEventListener('pointerup', done);
         window.removeEventListener('pointercancel', done);
+        if (Math.hypot(up.clientX - x0, up.clientY - y0) > 3) {
+            // The click that ends a drag must not open the song under the pointer.
+            const swallow = (c) => {
+                c.stopPropagation();
+                c.preventDefault();
+            };
+            window.addEventListener('click', swallow, { capture: true, once: true });
+            setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 0);
+        }
     };
     window.addEventListener('pointerup', done);
     window.addEventListener('pointercancel', done);
@@ -333,6 +343,9 @@ function CategoryView({ cat, index, store, onRename, onDelete, onEdit }) {
     );
 }
 
+// A textarea that starts one line high, like an input, and grows with its text.
+const GROWING = 'resize-none [field-sizing:content] max-h-48';
+
 // DraftField edits a text and saves it when the field loses focus. While it
 // is not being edited it shows the saved value (changes by others included).
 function DraftField({ value, onSave, multiline, className, ...props }) {
@@ -340,12 +353,11 @@ function DraftField({ value, onSave, multiline, className, ...props }) {
     const cancelled = useRef(false);
     const shown = draft ?? value ?? '';
     const Tag = multiline ? 'textarea' : 'input';
-    const lines = multiline ? shown.split('\n').length : 1;
     return (
         <Tag
-            className={cx('field', multiline && 'resize-y', className)}
+            className={cx('field', multiline && GROWING, className)}
             value={shown}
-            rows={multiline ? Math.min(Math.max(lines, 2), 8) : undefined}
+            rows={multiline ? Math.min(shown.split('\n').length, 8) : undefined}
             onFocus={() => setDraft(value || '')}
             onChange={(e) => setDraft(e.target.value)}
             onBlur={() => {
@@ -402,7 +414,7 @@ function CategoryDetails({ cat, store }) {
                     value={cat.criteria}
                     onSave={(criteria) => save({ criteria })}
                     maxLength={2000}
-                    placeholder="Напр.: 1 бал за виконавця, 1 бал за назву, 0,5 — якщо майже вгадали"
+                    placeholder="Напр.: 1 бал за виконавця, 1 бал за назву"
                     className="py-2 text-sm"
                 />
             </label>
@@ -465,8 +477,8 @@ function AddSongs({ cat, store, onAdded }) {
     return (
         <form onSubmit={add} className="panel p-3">
             <textarea
-                className="field min-h-[46px] resize-y font-mono text-[13px]"
-                rows={lines > 1 ? Math.min(lines + 1, 8) : 1}
+                className={cx('field py-2 font-mono text-sm', GROWING)}
+                rows={Math.min(Math.max(lines, 1), 8)}
                 placeholder="Вставте посилання на YouTube — можна одразу кілька, кожне з нового рядка"
                 value={text}
                 onChange={(e) => setText(e.target.value)}
@@ -571,27 +583,25 @@ function SongRow({ item, index, media, mediaProgress, clipProgress, store, onEdi
             dragListener={false}
             dragControls={controls}
             onDragEnd={onDragEnd}
-            className="panel group flex items-center gap-2 p-2 pr-3 sm:gap-3"
+            onClick={onEdit}
+            title="Відкрити редактор пісні"
+            className="panel group flex cursor-pointer items-center gap-2 p-2 pr-3 transition-colors hover:border-line-strong hover:bg-white/[0.03] sm:gap-3"
         >
             <span
                 className="cursor-grab touch-none text-faint active:cursor-grabbing"
                 onPointerDown={(e) => startDrag(e, controls)}
+                onClick={(e) => e.stopPropagation()}
                 title="Перетягніть, щоб змінити порядок"
             >
                 <GripVertical size={16} />
             </span>
             <span className="w-5 text-center font-display text-sm font-bold text-faint">{index + 1}</span>
-            <button type="button" className="shrink-0" onClick={onEdit} title="Налаштувати">
-                <Thumb media={media} item={item} />
-            </button>
+            <Thumb media={media} item={item} />
 
             <div className="min-w-0 flex-1">
-                <InlineEdit
-                    value={item.answer}
-                    placeholder={media?.title ? 'Відповідь…' : 'Чекаємо назву з YouTube…'}
-                    onSave={(answer) => patch({ answer })}
-                    className="block w-full font-semibold"
-                />
+                <div className={cx('truncate font-semibold', !item.answer && 'text-faint italic')}>
+                    {item.answer || (media?.title ? 'Без відповіді' : 'Чекаємо назву з YouTube…')}
+                </div>
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-dim">
                     <span className="font-mono">
                         {fmtTime(item.start)}–{fmtTime(item.end)}
@@ -604,13 +614,7 @@ function SongRow({ item, index, media, mediaProgress, clipProgress, store, onEdi
                     {media?.title && <span className="max-w-[26ch] truncate text-faint">{media.title}</span>}
                     <AnimatePresence initial={false}>
                         {state.key !== 'ready' && (
-                            <motion.span
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                onClick={state.key === 'unconfigured' ? onEdit : undefined}
-                                className={state.key === 'unconfigured' ? 'cursor-pointer' : undefined}
-                            >
+                            <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                                 <Chip tone={state.tone} icon={busy ? undefined : state.tone === 'bad' ? CircleAlert : undefined}>
                                     {busy && <Spinner size={11} />}
                                     {state.label}
@@ -628,7 +632,7 @@ function SongRow({ item, index, media, mediaProgress, clipProgress, store, onEdi
                 {busy && p != null && <ProgressBar value={p} className="mt-1.5 max-w-xs" />}
             </div>
 
-            <div className="flex shrink-0 items-center gap-0.5">
+            <div className="flex shrink-0 items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
                 {state.key === 'download_error' && (
                     <Button size="sm" variant="ghost" icon={RefreshCw} onClick={retry} title="Спробувати ще раз" />
                 )}
@@ -638,14 +642,7 @@ function SongRow({ item, index, media, mediaProgress, clipProgress, store, onEdi
                     icon={item.show_video ? Eye : EyeOff}
                     className={item.show_video ? 'text-accent-2' : 'text-faint'}
                     onClick={() => patch({ show_video: !item.show_video })}
-                    disabled={item.reverse}
-                    title={
-                        item.reverse
-                            ? 'Реверс звучить без відео'
-                            : item.show_video
-                              ? 'Глядачі бачать відео'
-                              : 'Лише звук (відео приховано)'
-                    }
+                    title={item.show_video ? 'Глядачі бачать відео' : 'Лише звук (відео приховано)'}
                 />
                 <Button
                     size="sm"

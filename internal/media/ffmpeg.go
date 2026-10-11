@@ -7,7 +7,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -85,8 +88,8 @@ type ClipSpec struct {
 	SrcH     int     `json:"src_h"`
 	HasVideo bool    `json:"has_video"`
 	HasAudio bool    `json:"has_audio"`
-	Height   int     `json:"height"` // output height; width is 16:9
-	Reverse  bool    `json:"reverse"`
+	Height   int     `json:"height"`  // output height; width is 16:9
+	Reverse  bool    `json:"reverse"` // sound and picture play backwards
 }
 
 // renderVersion is part of every clip key: bump it when the ffmpeg recipe changes
@@ -168,6 +171,7 @@ func ClipArgs(s ClipSpec) []string {
 
 	fadeIn := min(0.4, dur/4)
 	fadeOut := min(1.5, dur/3)
+	// The picture is reversed by RenderClip; here only the sound.
 	var af []string
 	if s.Reverse {
 		af = append(af, "areverse")
@@ -192,6 +196,67 @@ func ClipArgs(s ClipSpec) []string {
 		"-f", "mp4", s.Out,
 	)
 	return args
+}
+
+// reverseChunk is the longest piece of video reversed at once: ffmpeg's
+// reverse filter keeps every frame of its input in memory.
+const reverseChunk = 5.0
+
+// RenderClip cuts the clip described by spec into spec.Out. A reversed clip
+// with a picture is made in three steps so memory stays bounded however long
+// the fragment is: the clip with reversed sound, then its picture reversed in
+// short pieces (last piece first), then the pieces joined with the sound.
+func (f *FFmpeg) RenderClip(ctx context.Context, spec ClipSpec, onProgress func(float64)) error {
+	dur := max(spec.End-spec.Start, 0.5)
+	if !spec.Reverse || !spec.HasVideo {
+		return f.Run(ctx, ClipArgs(spec), dur, onProgress)
+	}
+	report := func(p float64) {
+		if onProgress != nil {
+			onProgress(p)
+		}
+	}
+	dir, err := os.MkdirTemp(filepath.Dir(spec.Out), ".reverse-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(dir)
+
+	fwd := spec
+	fwd.Out = filepath.Join(dir, "forward.mp4")
+	if err := f.Run(ctx, ClipArgs(fwd), dur, func(p float64) { report(p * 0.4) }); err != nil {
+		return err
+	}
+
+	n := int(math.Ceil(dur / reverseChunk))
+	piece := dur / float64(n) // equal pieces: no tiny last piece without frames
+	var list strings.Builder
+	for i := n - 1; i >= 0; i-- {
+		out := filepath.Join(dir, fmt.Sprintf("piece-%03d.mp4", i))
+		args := []string{"-hide_banner", "-nostdin", "-y", "-loglevel", "error",
+			"-ss", fmtSec(float64(i) * piece), "-t", fmtSec(piece), "-i", fwd.Out,
+			"-an", "-vf", "reverse",
+			"-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-profile:v", "high", "-pix_fmt", "yuv420p",
+			"-f", "mp4", out}
+		if err := f.Run(ctx, args, 0, nil); err != nil {
+			return err
+		}
+		fmt.Fprintf(&list, "file '%s'\n", filepath.Base(out))
+		report(0.4 + 0.55*float64(n-i)/float64(n))
+	}
+	listFile := filepath.Join(dir, "pieces.txt")
+	if err := os.WriteFile(listFile, []byte(list.String()), 0o644); err != nil {
+		return err
+	}
+	join := []string{"-hide_banner", "-nostdin", "-y", "-loglevel", "error",
+		"-f", "concat", "-safe", "0", "-i", listFile, "-i", fwd.Out,
+		"-map", "0:v:0", "-map", "1:a:0", "-c", "copy", "-t", fmtSec(dur),
+		"-movflags", "+faststart", "-f", "mp4", spec.Out}
+	if err := f.Run(ctx, join, 0, nil); err != nil {
+		return err
+	}
+	report(1)
+	return nil
 }
 
 // Run executes ffmpeg, reporting progress (0..1) against the expected output duration.

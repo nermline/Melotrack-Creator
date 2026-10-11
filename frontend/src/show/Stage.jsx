@@ -21,38 +21,29 @@ const rise = (delay = 0) => ({
     animate: { opacity: 1, y: 0, transition: { delay, duration: 0.6, ease: [0.2, 0.8, 0.2, 1] } },
 });
 
-// The stage is always laid out at this size and scaled to fit its box, so the
-// projector, the rehearsal on a phone and the theme thumbnails show exactly the
-// same picture.
-const STAGE_W = 1920;
-const STAGE_H = 1080;
-
 // Stage renders one show state. It is used fullscreen on the projector, inside
-// the rehearsal page and (with preview) as a static theme thumbnail.
+// the rehearsal page and (with preview) as a static theme thumbnail. It keeps a
+// 16:9 shape and everything inside is sized in container units, so all of them
+// show the same picture, only bigger or smaller. (It is not a full-size stage
+// scaled with a transform: Safari on iPhone would keep full-size layers in
+// memory for that.)
 export default function Stage(props) {
     const boxRef = useRef(null);
-    const [scale, setScale] = useState(0);
+    const [size, setSize] = useState({ w: 0, h: 0 });
     useLayoutEffect(() => {
         const box = boxRef.current;
-        const fit = () => setScale(Math.min(box.clientWidth / STAGE_W, box.clientHeight / STAGE_H));
+        const fit = () => {
+            const unit = Math.min(box.clientWidth / 16, box.clientHeight / 9);
+            setSize({ w: Math.floor(unit * 16), h: Math.floor(unit * 9) });
+        };
         fit();
         const ro = new ResizeObserver(fit);
         ro.observe(box);
         return () => ro.disconnect();
     }, []);
     return (
-        <div ref={boxRef} style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
-            <div
-                style={{
-                    position: 'absolute',
-                    left: '50%',
-                    top: '50%',
-                    width: STAGE_W,
-                    height: STAGE_H,
-                    transform: `translate(-50%, -50%) scale(${scale})`,
-                    visibility: scale ? 'visible' : 'hidden',
-                }}
-            >
+        <div ref={boxRef} style={{ position: 'absolute', inset: 0, overflow: 'hidden', display: 'grid', placeItems: 'center' }}>
+            <div style={{ position: 'relative', width: size.w, height: size.h, visibility: size.w ? 'visible' : 'hidden' }}>
                 <StageView {...props} />
             </div>
         </div>
@@ -288,7 +279,7 @@ function Sheets() {
                     transition={{ duration: 2.2, repeat: Infinity, delay: i * 0.2 }}
                 >
                     {[0, 1, 2, 3].map((l) => (
-                        <div key={l} style={{ height: '0.8cqmin', margin: '2cqmin 2cqmin 0', width: `${60 + ((l * 13) % 30)}%`, background: 'var(--bg)', opacity: 0.25, borderRadius: 4 }} />
+                        <div key={l} style={{ height: '0.8cqmin', margin: '2cqmin 2cqmin 0', width: `${60 + ((l * 13) % 30)}%`, background: 'var(--bg)', opacity: 0.25, borderRadius: '0.4cqmin' }} />
                     ))}
                 </motion.div>
             ))}
@@ -462,12 +453,18 @@ function Finished({ view, preview }) {
     );
 }
 
-// ClipLayer keeps every clip of the current category loaded and plays the
-// active one in sync with the server timer. The <video> elements stay mounted
-// across phases so the next song starts instantly.
+// ClipLayer plays the active clip in sync with the server timer. The next clip
+// is already loaded and its <video> stays mounted, so it starts instantly.
 function ClipLayer({ view, offset, unlocked, visible }) {
     const refs = useRef({});
-    const items = useMemo(() => (view.category?.items || []).filter((i) => i.clip_url), [view.category]);
+    // Only the current clip and the next one are loaded: a phone (Safari on
+    // iPhone above all) runs out of memory with a player for every song.
+    const songPhase = ['category', 'countdown', 'playing', 'thinking'].includes(view.phase);
+    const index = view.item_index;
+    const items = useMemo(
+        () => (songPhase ? (view.category?.items || []).slice(index, index + 2).filter((i) => i.clip_url) : []),
+        [view.category, index, songPhase],
+    );
     const active = view.phase === 'playing' ? view.category?.items?.[view.item_index] : null;
 
     useEffect(() => {

@@ -98,6 +98,7 @@ export default function ShowTab({ store }) {
             todo: states.filter((s) => s === 'unconfigured').length,
             noAnswer: items.filter((i) => !i.answer).length,
             emptyCats: project.categories.filter((c) => c.items.length === 0).length,
+            noCriteria: project.categories.filter((c) => !c.criteria?.trim()).map((c) => c.title),
         };
     }, [project]);
 
@@ -205,6 +206,13 @@ export default function ShowTab({ store }) {
                         </Check2>
                         {checks.todo > 0 && (
                             <Check2 warn>Без вибраного фрагмента: {songs(checks.todo)} — відкрийте їх у «Програмі» й збережіть</Check2>
+                        )}
+                        {project.categories.length > 0 && (
+                            <Check2 ok={checks.noCriteria.length === 0} warn>
+                                {checks.noCriteria.length === 0
+                                    ? 'Критерії оцінювання заповнені'
+                                    : `Без критеріїв оцінювання: ${checks.noCriteria.map((t) => `«${t}»`).join(', ')}`}
+                            </Check2>
                         )}
                         <Check2 ok={checks.noAnswer === 0} warn>
                             {checks.noAnswer === 0 ? 'Відповіді заповнені' : `Без відповіді: ${songs(checks.noAnswer)}`}

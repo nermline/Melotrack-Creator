@@ -1,5 +1,6 @@
-/* The presentation. Everything is sized in container units (cq*) so the same
-   markup works fullscreen, in the rehearsal box and in the theme thumbnails. */
+/* The presentation. Everything is sized in container units (cq*), with no
+   pixel minimums, so the projector, the rehearsal on a phone and the theme
+   thumbnails show exactly the same picture at different sizes. */
 
 .stage {
   position: relative;
@@ -104,26 +105,26 @@
 }
 
 .stage .title-xl {
-  font-size: clamp(20px, 11cqmin, 200px);
+  font-size: 11cqmin;
   text-shadow: var(--glow);
 }
 .stage .title-l {
-  font-size: clamp(18px, 8cqmin, 150px);
+  font-size: 8cqmin;
   text-shadow: var(--glow);
 }
 .stage .title-m {
-  font-size: clamp(14px, 6.2cqmin, 110px);
+  font-size: 6.2cqmin;
 }
 .stage .eyebrow-s {
   font-family: var(--body);
-  font-size: clamp(9px, 3.3cqmin, 52px);
+  font-size: 3.3cqmin;
   font-weight: 800;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--a2);
 }
 .stage .sub {
-  font-size: clamp(10px, 4cqmin, 64px);
+  font-size: 4cqmin;
   color: var(--dim);
   text-shadow: 0 0.2cqmin 1.2cqmin rgb(0 0 0 / 0.6);
 }
@@ -131,14 +132,14 @@
   background: var(--card);
   border: 1px solid var(--card-line);
   border-radius: 2cqmin;
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(0.6cqmin);
 }
 .stage .pill {
   display: inline-flex;
   align-items: center;
   padding: 1cqmin 2.6cqmin;
   border-radius: 99cqmin;
-  font-size: clamp(9px, 3.3cqmin, 50px);
+  font-size: 3.3cqmin;
   font-weight: 700;
   background: var(--card);
   border: 1px solid var(--card-line);
@@ -426,7 +427,7 @@
   position: absolute;
   text-shadow: 0 0.2cqmin 1cqmin rgb(0 0 0 / 0.6);
   z-index: 7;
-  font-size: clamp(8px, 2.7cqmin, 40px);
+  font-size: 2.7cqmin;
   font-weight: 700;
   color: var(--dim);
   letter-spacing: 0.08em;

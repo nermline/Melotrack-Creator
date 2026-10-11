@@ -48,6 +48,8 @@ export default function Preview() {
     }, [cat, status, show, command, setParams]);
 
     const title = show?.title;
+    const inCategory = ['category', 'countdown', 'playing', 'thinking', 'collect', 'answers'].includes(show?.phase);
+    const categoryTitle = inCategory ? show?.category?.title : '';
     useEffect(() => {
         document.title = title ? `Репетиція — ${title}` : 'Репетиція';
     }, [title]);
@@ -61,7 +63,7 @@ export default function Preview() {
                     </Link>
                     <div className="min-w-0">
                         <div className="font-display font-bold">Репетиція</div>
-                        <div className="truncate text-xs text-dim">Так виглядатиме екран. Справжній показ не зміниться</div>
+                        {categoryTitle && <div className="line-clamp-2 text-xs text-dim">Так виглядатиме категорія «{categoryTitle}»</div>}
                     </div>
                 </div>
                 <LiveDot status={status} />

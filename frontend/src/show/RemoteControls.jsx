@@ -115,18 +115,18 @@ export default function RemoteControls({ view, offset, command, status, rehearsa
     return (
         <div className="flex flex-col gap-3">
             <div className="panel p-4">
-                <div className="flex items-center justify-between gap-2 text-xs text-dim">
-                    {rehearsal ? (
-                        <span>Бачите лише ви — справжній екран не зміниться</span>
-                    ) : (
-                        <span className="inline-flex items-center gap-1.5">
-                            <Monitor size={14} className={screens ? 'text-ok' : 'text-bad'} />
-                            {screens ? `екран підключено${screens > 1 ? ` (${screens})` : ''}` : 'екран не підключено'}
-                        </span>
-                    )}
-                    {status !== 'online' && <span className="text-warn">звʼязок: {status}</span>}
-                </div>
-                <div className="mt-2 font-display text-lg font-bold">{view ? PHASE_LABEL[phase] : '…'}</div>
+                {(!rehearsal || status !== 'online') && (
+                    <div className="mb-2 flex items-center justify-between gap-2 text-xs text-dim">
+                        {!rehearsal && (
+                            <span className="inline-flex items-center gap-1.5">
+                                <Monitor size={14} className={screens ? 'text-ok' : 'text-bad'} />
+                                {screens ? `екран підключено${screens > 1 ? ` (${screens})` : ''}` : 'екран не підключено'}
+                            </span>
+                        )}
+                        {status !== 'online' && <span className="text-warn">звʼязок: {status}</span>}
+                    </div>
+                )}
+                <div className="font-display text-lg font-bold">{view ? PHASE_LABEL[phase] : '…'}</div>
                 {view && inCategory && view.cat_count > 0 && (
                     <div className="mt-0.5 text-sm text-dim">
                         Категорія {view.cat_index + 1}/{view.cat_count}: <b className="text-ink">{view.category?.title}</b>

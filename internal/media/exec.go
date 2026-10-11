@@ -45,7 +45,7 @@ type LocalRenderer struct{ FF *FFmpeg }
 
 func (r LocalRenderer) Render(ctx context.Context, src SourceRef, spec ClipSpec, onProgress func(float64)) error {
 	spec.Source = src.Path
-	return r.FF.Run(ctx, ClipArgs(spec), spec.End-spec.Start, onProgress)
+	return r.FF.RenderClip(ctx, spec, onProgress)
 }
 
 // HashFile returns the hex sha256 of a file.

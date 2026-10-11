@@ -312,9 +312,6 @@ func (s *Server) updateItem(c *gin.Context) {
 		if in.Reverse != nil {
 			it.Reverse = *in.Reverse
 		}
-		if it.Reverse {
-			it.ShowVideo = false // a reversed song is only heard
-		}
 		if in.Configured != nil {
 			it.Configured = *in.Configured
 		}

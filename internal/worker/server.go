@@ -358,7 +358,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request) {
 	spec := req.Spec
 	spec.Source, spec.Out = src, tmp
 	started := time.Now()
-	if err := s.opt.FFmpeg.Run(ctx, media.ClipArgs(spec), spec.End-spec.Start, throttle(st.progress)); err != nil {
+	if err := s.opt.FFmpeg.RenderClip(ctx, spec, throttle(st.progress)); err != nil {
 		os.Remove(tmp)
 		if ctx.Err() == nil {
 			st.fail("render_failed", "Не вдалося нарізати фрагмент", err.Error())
