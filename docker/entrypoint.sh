@@ -7,10 +7,12 @@ APP_USER=melotrack
 DATA="${DATA_DIR:-/data}"
 
 if [ "$(id -u)" = "0" ]; then
-  # A bind-mounted ./data is created by Docker as root on Linux hosts, which the
-  # app user cannot write to. Hand it over, then drop privileges for good.
+  # A bind-mounted ./data is created by Docker as root on Linux hosts, and data
+  # copied in by hand from another server keeps that server's owners: the app
+  # user could only read it ("attempt to write a readonly database"). Hand
+  # anything foreign over, then drop privileges for good.
   mkdir -p "$DATA"
-  if [ "$(stat -c %u "$DATA")" != "$(id -u "$APP_USER")" ]; then
+  if [ -n "$(find "$DATA" ! -user "$APP_USER" -print -quit)" ]; then
     echo "entrypoint: giving $DATA to $APP_USER"
     chown -R "$APP_USER:$APP_USER" "$DATA"
   fi
