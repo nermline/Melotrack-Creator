@@ -8,7 +8,7 @@ import Logo from '../ui/Logo';
 
 // Why "Sign in with Google" sent the person back here (?error=…).
 const GOOGLE_ERRORS = {
-    denied: 'Цей акаунт Google не має доступу до Мелотреку. Попросіть організатора додати ваш email або увійдіть іншим акаунтом.',
+    denied: 'Цей акаунт Google не має доступу до Мелотреку. Попросіть адміністратора додати ваш email або увійдіть іншим акаунтом.',
     cancelled: 'Вхід скасовано.',
     expired: 'Вхід тривав задовго. Спробуйте ще раз.',
     failed: 'Не вдалося увійти через Google. Спробуйте ще раз.',
@@ -73,7 +73,6 @@ function GoogleSignIn({ target, error }) {
                 <GoogleLogo />
                 Увійти через Google
             </a>
-            <p className="mt-4 mb-0 text-center text-xs text-faint">Вхід лише для акаунтів, яким організатор дав доступ</p>
         </>
     );
 }

@@ -73,16 +73,17 @@ type Engine struct {
 	Timer  Timer
 	Cats   []Category
 	Board  []Standing
-	// Volume scales the show's sound on the screens: 1 is as cut, up to
-	// MaxVolume boosts it (a limiter keeps it from clipping).
+	// Volume is the show's loudness on the screens as the remote shows it
+	// (1 = 100%, as cut). Screens hear it on a perceptual scale: every
+	// doubling is +10 dB, about twice as loud.
 	Volume float64
 
 	src Source
 	now func() int64
 }
 
-// MaxVolume is the loudest the remote can turn the show up (200%).
-const MaxVolume = 2.0
+// MaxVolume is the loudest the remote can turn the show up (400%, +20 dB).
+const MaxVolume = 4.0
 
 func NewEngine(src Source, now func() int64) *Engine {
 	e := &Engine{Phase: PhaseWelcome, src: src, now: now, Volume: 1}

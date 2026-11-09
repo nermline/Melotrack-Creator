@@ -1,36 +1,55 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { FileText, Printer } from 'lucide-react';
 import { Button, Empty } from '../ui';
 import { cx } from '../lib/cx';
-import { songs, teams } from '../lib/format';
-import Sheet from './Sheet';
+import { songs } from '../lib/format';
+import Sheet, { SHEET_HEADER } from './Sheet';
 
 const A4_WIDTH_PX = 793.7; // 210 mm at 96 dpi
-const PREVIEW_WIDTH = 280;
 
-// Sheet settings are a per-browser convenience: whoever prints keeps them.
-function loadSettings(pid) {
+// Which categories to leave out is a per-browser convenience: whoever prints keeps it.
+function loadSkipped(pid) {
     try {
-        return JSON.parse(localStorage.getItem(`melotrack:sheets:${pid}`)) || {};
+        return JSON.parse(localStorage.getItem(`melotrack:sheets:${pid}`))?.skip || [];
     } catch {
-        return {};
+        return [];
     }
+}
+
+// SheetPreview shows a sheet scaled down to the width of its box.
+function SheetPreview({ category, className }) {
+    const ref = useRef(null);
+    const [scale, setScale] = useState(0);
+    useLayoutEffect(() => {
+        const el = ref.current;
+        const fit = () => setScale(el.clientWidth / A4_WIDTH_PX);
+        fit();
+        const ro = new ResizeObserver(fit);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
+    return (
+        <div ref={ref} className={cx('overflow-hidden rounded-lg shadow-xl ring-1 ring-black/10', className)} style={{ aspectRatio: '210 / 297' }}>
+            <div style={{ transform: `scale(${scale})`, transformOrigin: 'top left', visibility: scale ? 'visible' : 'hidden' }}>
+                <Sheet header={SHEET_HEADER} number={category.number} category={category} />
+            </div>
+        </div>
+    );
 }
 
 // SheetsTab previews the teams' answer sheets (one per category) and opens
 // them for printing.
 export default function SheetsTab({ store }) {
     const { project } = store;
-    const saved = useMemo(() => loadSettings(project.id), [project.id]);
-    const [header, setHeader] = useState(saved.header ?? 'Мелотрек');
-    const [skip, setSkip] = useState(() => new Set(saved.skip || []));
+    const saved = useMemo(() => loadSkipped(project.id), [project.id]);
+    const [skip, setSkip] = useState(() => new Set(saved));
     useEffect(() => {
         try {
-            localStorage.setItem(`melotrack:sheets:${project.id}`, JSON.stringify({ header, skip: [...skip] }));
+            localStorage.setItem(`melotrack:sheets:${project.id}`, JSON.stringify({ skip: [...skip] }));
         } catch {
-            /* storage unavailable: settings last until the page closes */
+            /* storage unavailable: the choice lasts until the page closes */
         }
-    }, [project.id, header, skip]);
+    }, [project.id, skip]);
 
     const cats = project.categories.map((c, i) => ({ ...c, number: i + 1 }));
     const chosen = cats.filter((c) => c.items.length > 0 && !skip.has(c.id));
@@ -41,10 +60,7 @@ export default function SheetsTab({ store }) {
             else next.add(id);
             return next;
         });
-    const print = () => {
-        const q = new URLSearchParams({ header: header.trim(), cats: chosen.map((c) => c.id).join(',') });
-        window.open(`/p/${project.id}/sheets/print?${q}`, '_blank');
-    };
+    const print = () => window.open(`/p/${project.id}/sheets/print?cats=${chosen.map((c) => c.id).join(',')}`, '_blank');
 
     if (cats.length === 0) {
         return (
@@ -56,27 +72,15 @@ export default function SheetsTab({ store }) {
         );
     }
 
-    const scale = PREVIEW_WIDTH / A4_WIDTH_PX;
     return (
-        <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
-            <aside className="flex flex-col gap-4 lg:sticky lg:top-[120px] lg:self-start">
-                <section className="panel p-4">
-                    <label className="block">
-                        <span className="label">Назва на бланку</span>
-                        <input className="field" maxLength={60} value={header} onChange={(e) => setHeader(e.target.value)} />
-                        <span className="mt-1.5 block text-xs text-faint">Стоїть перед «Тур №…». Можна лишити порожньою.</span>
-                    </label>
-                    <Button variant="primary" icon={Printer} className="mt-4 w-full" disabled={chosen.length === 0} onClick={print}>
-                        Друкувати {chosen.length > 0 && `(${chosen.length})`}
-                    </Button>
-                    <p className="mt-3 mb-0 text-xs text-dim">
-                        Відкриється сторінка друку. Кількість копій ({teams(project.teams.length)}) і «Зберегти як PDF» — у вікні
-                        друку браузера.
-                    </p>
-                </section>
-                <section className="panel p-2">
-                    <div className="px-2 pt-1 pb-2 text-sm font-bold">Категорії</div>
-                    <ul className="m-0 list-none p-0">
+        <div className="grid gap-5 lg:min-h-0 lg:flex-1 lg:grid-cols-[320px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
+            <aside className="flex flex-col gap-4 lg:min-h-0">
+                <Button variant="primary" icon={Printer} className="w-full shrink-0" disabled={chosen.length === 0} onClick={print}>
+                    Друкувати {chosen.length > 0 && `(${chosen.length})`}
+                </Button>
+                <section className="panel flex flex-col p-2 lg:min-h-0">
+                    <div className="shrink-0 px-2 pt-1 pb-2 text-sm font-bold">Категорії</div>
+                    <ul className="m-0 list-none p-0 lg:min-h-0 lg:overflow-y-auto">
                         {cats.map((c) => {
                             const empty = c.items.length === 0;
                             return (
@@ -99,7 +103,7 @@ export default function SheetsTab({ store }) {
                 </section>
             </aside>
 
-            <section className="min-w-0">
+            <section className="min-w-0 lg:-mr-2 lg:min-h-0 lg:overflow-y-auto lg:pr-2">
                 {chosen.length === 0 ? (
                     <div className="panel">
                         <Empty icon={FileText} title="Нічого не вибрано">
@@ -107,17 +111,14 @@ export default function SheetsTab({ store }) {
                         </Empty>
                     </div>
                 ) : (
-                    <div className="grid justify-center gap-5" style={{ gridTemplateColumns: `repeat(auto-fill, ${PREVIEW_WIDTH}px)` }}>
-                        {chosen.map((c) => (
-                            <div
+                    // Two sheets per row; a single one left over sits in the middle.
+                    <div className="grid gap-5 pb-1 sm:grid-cols-2">
+                        {chosen.map((c, i) => (
+                            <SheetPreview
                                 key={c.id}
-                                className="overflow-hidden rounded-lg shadow-xl ring-1 ring-black/10"
-                                style={{ width: PREVIEW_WIDTH, height: PREVIEW_WIDTH * (297 / 210) }}
-                            >
-                                <div style={{ transform: `scale(${scale})`, transformOrigin: 'top left' }}>
-                                    <Sheet header={header.trim()} number={c.number} category={c} />
-                                </div>
-                            </div>
+                                category={c}
+                                className={chosen.length % 2 === 1 && i === chosen.length - 1 ? 'sm:col-span-2 sm:mx-auto sm:w-[calc(50%-0.625rem)]' : ''}
+                            />
                         ))}
                     </div>
                 )}

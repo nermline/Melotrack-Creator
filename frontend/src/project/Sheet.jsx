@@ -1,6 +1,9 @@
 import '@fontsource-variable/lora';
 import './sheets.css';
 
+// SHEET_HEADER opens the round line: "МЕЛОТРЕК. ТУР №1".
+export const SHEET_HEADER = 'Мелотрек';
+
 // A long category name gets a smaller font so it stays on one or two lines.
 function titleSize(title) {
     const n = title.length;

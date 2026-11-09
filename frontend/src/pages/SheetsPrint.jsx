@@ -3,7 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, Printer } from 'lucide-react';
 import { api } from '../lib/api';
 import { Button, Spinner } from '../ui';
-import Sheet from '../project/Sheet';
+import Sheet, { SHEET_HEADER } from '../project/Sheet';
 
 // The answer sheets alone, one A4 page per category, ready for the browser's
 // print dialog (which can also save them as a PDF).
@@ -19,7 +19,6 @@ export default function SheetsPrint() {
             .catch((e) => setError(e.message));
     }, [pid]);
 
-    const header = params.get('header') ?? 'Мелотрек';
     const ids = params.get('cats')?.split(',').filter(Boolean).map(Number);
     const cats = (project?.categories || [])
         .map((c, i) => ({ ...c, number: i + 1 }))
@@ -62,7 +61,7 @@ export default function SheetsPrint() {
                 </Button>
             </div>
             {cats.map((c) => (
-                <Sheet key={c.id} header={header} number={c.number} category={c} />
+                <Sheet key={c.id} header={SHEET_HEADER} number={c.number} category={c} />
             ))}
         </div>
     );

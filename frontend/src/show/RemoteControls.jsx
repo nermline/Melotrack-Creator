@@ -72,11 +72,12 @@ function primaryAction(v) {
     }
 }
 
-const VOLUME_STEP = 0.1;
-const MAX_VOLUME = 2;
+const VOLUME_STEP = 0.25;
+const MAX_VOLUME = 4;
 
 // VolumeControl sets the show's volume on every screen: 100% is the clips as
-// cut; above it the screen boosts the sound (a limiter stops it clipping).
+// cut, 200% sounds twice as loud, 50% half as loud (the screen hears it on a
+// perceptual scale and limits the boost so it does not clip).
 function VolumeControl({ volume, command, disabled }) {
     const [drag, setDrag] = useState(null); // the slider's value while it moves
     const sent = useRef(0);

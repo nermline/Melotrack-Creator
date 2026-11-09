@@ -14,8 +14,8 @@ import SheetsTab from './SheetsTab';
 
 const TABS = [
     { id: 'program', label: 'Програма', icon: ListMusic },
-    { id: 'sheets', label: 'Бланки', icon: FileText },
     { id: 'teams', label: 'Команди', icon: Users },
+    { id: 'sheets', label: 'Бланки', icon: FileText },
     { id: 'scoring', label: 'Оцінювання', icon: ClipboardCheck },
     { id: 'show', label: 'Показ', icon: MonitorPlay },
 ];
@@ -37,9 +37,9 @@ export default function ProjectPage() {
         }
     };
 
-    // The program fills the window on wide screens: its category list and song
-    // list scroll on their own instead of the whole page.
-    const fill = tab === 'program';
+    // The program and the sheets fill the window on wide screens: their left
+    // and right parts scroll on their own instead of the whole page.
+    const fill = tab === 'program' || tab === 'sheets';
 
     return (
         <div className={cx(fill && 'lg:flex lg:h-dvh lg:flex-col')}>
