@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nermline/Melotrack-Creator/internal/audit"
 	"github.com/nermline/Melotrack-Creator/internal/media"
 	"github.com/nermline/Melotrack-Creator/internal/store"
 	"gorm.io/gorm"
@@ -142,6 +143,8 @@ type Session struct {
 	timer *time.Timer
 	gen   int
 
+	volumeLog *time.Timer // a volume slider sends a burst: log where it stops
+
 	saveMu    sync.Mutex
 	saveData  string
 	saveKick  chan struct{}
@@ -154,7 +157,7 @@ type Session struct {
 var knownPhases = map[Phase]bool{
 	PhaseWelcome: true, PhaseCategory: true, PhaseCountdown: true, PhasePlaying: true,
 	PhaseThinking: true, PhaseCollect: true, PhaseAnswers: true, PhaseScoring: true,
-	PhaseResults: true, PhaseFinished: true,
+	PhaseResults: true, PhaseLeaderboard: true, PhaseFinished: true,
 }
 
 type savedState struct {
@@ -163,6 +166,7 @@ type savedState struct {
 	Item   int        `json:"item"`
 	Reveal int        `json:"reveal"`
 	Board  []Standing `json:"board,omitempty"`
+	Volume *float64   `json:"volume,omitempty"`
 }
 
 func newSession(db *gorm.DB, key Key, changed func()) (*Session, error) {
@@ -197,7 +201,10 @@ func (s *Session) restore(raw string) {
 		return
 	}
 	e := s.eng
-	if st.Cat >= len(e.Cats) && st.Phase != PhaseScoring && st.Phase != PhaseResults && st.Phase != PhaseFinished {
+	if st.Volume != nil {
+		e.Volume = min(max(*st.Volume, 0), MaxVolume)
+	}
+	if st.Cat >= len(e.Cats) && st.Phase != PhaseScoring && st.Phase != PhaseResults && st.Phase != PhaseLeaderboard && st.Phase != PhaseFinished {
 		return
 	}
 	e.Phase, e.Cat, e.Item, e.Reveal, e.Board = st.Phase, st.Cat, st.Item, st.Reveal, st.Board
@@ -221,16 +228,62 @@ func (s *Session) restore(raw string) {
 }
 
 // Command applies a remote action and pushes the result to every device.
-func (s *Session) Command(action string, value float64) {
+// actor is who sent it, for the action log.
+func (s *Session) Command(actor, action string, value float64) {
 	s.mu.Lock()
 	ok := s.eng.Apply(action, value)
 	if ok {
 		s.afterChange()
+		if !s.key.Private() {
+			s.logCommand(actor, action, value)
+		}
 	}
 	s.mu.Unlock()
 	if ok {
 		s.changed()
 	}
+}
+
+// logCommand records a command of the real show (rehearsals are not logged).
+// Caller holds s.mu.
+func (s *Session) logCommand(actor, action string, value float64) {
+	if action == "volume" {
+		if s.volumeLog != nil {
+			s.volumeLog.Stop()
+		}
+		vol := fmt.Sprintf("%.0f%%", s.eng.Volume*100)
+		s.volumeLog = time.AfterFunc(2*time.Second, func() {
+			audit.Record(actor, "show.volume", "project", s.projectID, "volume", vol)
+		})
+		return
+	}
+	attrs := []any{"project", s.projectID}
+	switch action {
+	case "goto":
+		attrs = append(attrs, "to_category", int(value)+1)
+	case "seek":
+		attrs = append(attrs, "seconds", value)
+	}
+	audit.Record(actor, "show."+action, append(attrs, s.position()...)...)
+}
+
+// position describes where the show is, for the action log. Caller holds s.mu.
+func (s *Session) position() []any {
+	e := s.eng
+	out := []any{"phase", string(e.Phase)}
+	switch e.Phase {
+	case PhaseWelcome, PhaseScoring, PhaseLeaderboard, PhaseFinished:
+	case PhaseResults:
+		out = append(out, "revealed", e.Revealed())
+	default:
+		if e.Cat >= 0 && e.Cat < len(e.Cats) {
+			out = append(out, "category", e.Cats[e.Cat].Title)
+			if it := e.CurrentItem(); it != nil {
+				out = append(out, "song", e.Item+1, "answer", it.Answer)
+			}
+		}
+	}
+	return out
 }
 
 // afterChange re-arms the phase timer and persists the position. Caller holds s.mu.
@@ -251,6 +304,9 @@ func (s *Session) afterChange() {
 			}
 			s.eng.Expire()
 			s.afterChange()
+			if !s.key.Private() {
+				audit.Record(audit.System, "show.timer", append([]any{"project", s.projectID}, s.position()...)...)
+			}
 			s.mu.Unlock()
 			s.changed()
 		})
@@ -258,7 +314,8 @@ func (s *Session) afterChange() {
 	if s.key.Private() {
 		return
 	}
-	st := savedState{Phase: s.eng.Phase, Cat: s.eng.Cat, Item: s.eng.Item, Reveal: s.eng.Reveal, Board: s.eng.Board}
+	vol := s.eng.Volume
+	st := savedState{Phase: s.eng.Phase, Cat: s.eng.Cat, Item: s.eng.Item, Reveal: s.eng.Reveal, Board: s.eng.Board, Volume: &vol}
 	data, _ := json.Marshal(st)
 	s.saveMu.Lock()
 	s.saveData = string(data)
@@ -409,7 +466,9 @@ type View struct {
 	Category   *CategoryView `json:"category,omitempty"`
 	Answers    []AnswerView  `json:"answers,omitempty"`
 	Board      []Standing    `json:"board,omitempty"`
-	Revealed   int           `json:"revealed"`
+	Revealed   int           `json:"revealed"` // podium places revealed, from the lowest
+	Podium     int           `json:"podium"`   // podium places to reveal
+	Volume     float64       `json:"volume"`
 	Host       *HostView     `json:"host,omitempty"`
 }
 
@@ -422,7 +481,7 @@ func (s *Session) View(host bool) View {
 		Seq: s.seq, ServerNow: time.Now().UnixMilli(), Phase: e.Phase,
 		Title: s.info.Title, Theme: s.info.Theme,
 		CatIndex: e.Cat, CatCount: len(e.Cats), ItemIndex: e.Item,
-		Timer: e.Timer, Revealed: e.Revealed(),
+		Timer: e.Timer, Revealed: e.Revealed(), Podium: podiumSteps(e.Board), Volume: e.Volume,
 	}
 	var cat *Category
 	if e.Cat >= 0 && e.Cat < len(e.Cats) {
@@ -436,10 +495,10 @@ func (s *Session) View(host bool) View {
 		for _, c := range e.Cats {
 			v.Categories = append(v.Categories, c.Title)
 		}
-	case PhaseResults, PhaseFinished:
+	case PhaseResults, PhaseLeaderboard, PhaseFinished:
 		v.Board = e.Board
 	}
-	if cat != nil && e.Phase != PhaseWelcome && e.Phase != PhaseScoring && e.Phase != PhaseResults && e.Phase != PhaseFinished {
+	if cat != nil && e.Phase != PhaseWelcome && e.Phase != PhaseScoring && e.Phase != PhaseResults && e.Phase != PhaseLeaderboard && e.Phase != PhaseFinished {
 		cv := &CategoryView{ID: cat.ID, Title: cat.Title, Items: make([]ClipView, 0, len(cat.Items))}
 		for _, it := range cat.Items {
 			cv.Items = append(cv.Items, ClipView{ID: it.ID, ClipURL: it.ClipURL, ShowVideo: it.ShowVideo, DurationMs: it.DurationMs, ClipReady: it.ClipReady})

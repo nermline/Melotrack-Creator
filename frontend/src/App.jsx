@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { api, setUnauthorizedHandler } from './lib/api';
+import { SessionContext } from './lib/session';
 import { FeedbackProvider } from './ui/feedback';
 import { Spinner } from './ui';
 import Login from './pages/Login';
@@ -11,6 +12,7 @@ import ProjectPage from './project/ProjectPage';
 const Screen = lazy(() => import('./pages/Screen'));
 const Remote = lazy(() => import('./pages/Remote'));
 const Preview = lazy(() => import('./pages/Preview'));
+const SheetsPrint = lazy(() => import('./pages/SheetsPrint'));
 
 function Loading() {
     return (
@@ -23,6 +25,7 @@ function Loading() {
 // Private checks the session once and redirects to the login page when needed.
 function Private({ children }) {
     const [state, setState] = useState('checking');
+    const [session, setSession] = useState(null);
     const location = useLocation();
     const navigate = useNavigate();
 
@@ -36,7 +39,11 @@ function Private({ children }) {
     useEffect(() => {
         let alive = true;
         api.get('/api/session')
-            .then(() => alive && setState('ok'))
+            .then((s) => {
+                if (!alive) return;
+                setSession(s);
+                setState('ok');
+            })
             .catch(() => alive && setState('out'));
         return () => {
             alive = false;
@@ -48,7 +55,7 @@ function Private({ children }) {
         const next = location.pathname + location.search;
         return <Navigate to={`/login?next=${encodeURIComponent(next)}`} replace />;
     }
-    return children;
+    return <SessionContext.Provider value={session}>{children}</SessionContext.Provider>;
 }
 
 export default function App() {
@@ -62,6 +69,7 @@ export default function App() {
                         <Route path="/p/:pid/screen" element={<Private><Screen /></Private>} />
                         <Route path="/p/:pid/remote" element={<Private><Remote /></Private>} />
                         <Route path="/p/:pid/preview" element={<Private><Preview /></Private>} />
+                        <Route path="/p/:pid/sheets/print" element={<Private><SheetsPrint /></Private>} />
                         <Route path="/p/:pid/:tab?" element={<Private><ProjectPage /></Private>} />
                         <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>

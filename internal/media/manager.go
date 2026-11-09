@@ -1,6 +1,7 @@
 package media
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nermline/Melotrack-Creator/internal/audit"
 	"github.com/nermline/Melotrack-Creator/internal/store"
 	"gorm.io/gorm"
 )
@@ -340,6 +342,7 @@ func (m *Manager) installSource(ctx context.Context, med store.Media, res Downlo
 		return err
 	}
 	slog.Info("source ready", "media", med.YouTubeID, "kind", kind, "w", probe.Width, "h", probe.Height, "dur", probe.Duration)
+	audit.Record(audit.System, "media.ready", "media", med.ID, "source", med.YouTubeID, "kind", kind, "title", cmp.Or(title, med.Title))
 	if med.Title == "" && title != "" {
 		m.fillAnswers(med.ID, SuggestAnswer(title, ""))
 	}
@@ -349,6 +352,7 @@ func (m *Manager) installSource(ctx context.Context, med store.Media, res Downlo
 }
 
 func (m *Manager) failMedia(mediaID uint, code, msg, detail string) {
+	audit.Record(audit.System, "media.failed", "media", mediaID, "code", code, "error", msg, "detail", truncate(detail, 300))
 	if detail != "" && !strings.Contains(msg, detail) {
 		msg = msg + "\n" + truncate(detail, 400)
 	}
@@ -614,6 +618,7 @@ func (m *Manager) runRender(ctx context.Context, itemID uint) {
 			return
 		}
 		slog.Warn("render failed", "item", itemID, "err", err)
+		audit.Record(audit.System, "clip.failed", "item", itemID, "err", truncate(err.Error(), 300))
 		m.db.Model(&store.Item{}).Where("id = ?", itemID).
 			Updates(map[string]any{"clip_status": store.ClipError, "clip_error": truncate(err.Error(), 400)})
 		m.notify.ItemChanged(itemID)
@@ -646,6 +651,7 @@ func (m *Manager) runRender(ctx context.Context, itemID uint) {
 		m.ScheduleGC() // the old clip may still be shared with a duplicated project
 	}
 	slog.Info("clip rendered", "item", itemID, "took", time.Since(started).Round(time.Millisecond))
+	audit.Record(audit.System, "clip.ready", "item", itemID, "took", time.Since(started).Round(time.Millisecond))
 	m.notify.ItemChanged(itemID)
 }
 

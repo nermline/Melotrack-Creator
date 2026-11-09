@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,10 +32,24 @@ type Config struct {
 	// AllowedOrigins are extra origins allowed to open WebSockets (the dev server, for example).
 	AllowedOrigins []string `envconfig:"ALLOWED_ORIGINS" default:"http://localhost:5173"`
 
-	// Password is the single shared organiser password.
+	// AuthMode is "password" (one shared APP_PASSWORD) or "google" (Sign in
+	// with Google, open only to ALLOWED_EMAILS).
+	AuthMode string `envconfig:"AUTH_MODE" default:"password"`
+	// Password is the single shared organiser password (password mode).
 	Password string `envconfig:"APP_PASSWORD"`
 	// LegacyAdminPassword is used when APP_PASSWORD is not set (pre-v2 .env files).
 	LegacyAdminPassword string `envconfig:"ADMIN_PASSWORD"`
+
+	// Google mode: an OAuth client ("Web application") from Google Cloud whose
+	// redirect URI is PUBLIC_URL/api/auth/google/callback.
+	GoogleClientID     string `envconfig:"GOOGLE_CLIENT_ID"`
+	GoogleClientSecret string `envconfig:"GOOGLE_CLIENT_SECRET"`
+	// AllowedEmailsRaw lists the Google accounts that may sign in (comma separated).
+	AllowedEmailsRaw string `envconfig:"ALLOWED_EMAILS"`
+	// PublicURL is the address organisers open, e.g. https://melotrack.example.com.
+	PublicURL string `envconfig:"PUBLIC_URL"`
+	// AllowedEmails is AllowedEmailsRaw parsed and lower-cased.
+	AllowedEmails []string `ignored:"true"`
 
 	YtDlpPath      string `envconfig:"YTDLP_PATH" default:"yt-dlp"`
 	YtDlpProxy     string `envconfig:"YTDLP_PROXY"`
@@ -99,6 +114,52 @@ func (c *Config) DatabasePath() string {
 	return filepath.Join(c.DataDir, "melotrack.db")
 }
 
+// GoogleRedirectURL is where Google sends people back after signing in.
+func (c *Config) GoogleRedirectURL() string { return c.PublicURL + "/api/auth/google/callback" }
+
+func (c *Config) checkAuth() error {
+	switch c.AuthMode = strings.ToLower(strings.TrimSpace(c.AuthMode)); c.AuthMode {
+	case "", "password":
+		c.AuthMode = "password"
+		if c.Password == "" {
+			c.Password = c.LegacyAdminPassword
+		}
+		if c.Password == "" {
+			return fmt.Errorf("config: APP_PASSWORD is required (AUTH_MODE=password)")
+		}
+	case "google":
+		if c.GoogleClientID == "" || c.GoogleClientSecret == "" {
+			return fmt.Errorf("config: GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are required with AUTH_MODE=google")
+		}
+		c.AllowedEmails = ParseEmails(c.AllowedEmailsRaw)
+		if len(c.AllowedEmails) == 0 {
+			return fmt.Errorf("config: ALLOWED_EMAILS must list at least one Google account with AUTH_MODE=google")
+		}
+		u, err := url.Parse(strings.TrimRight(strings.TrimSpace(c.PublicURL), "/"))
+		if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.Path != "" {
+			return fmt.Errorf("config: PUBLIC_URL must be the site address, e.g. https://melotrack.example.com (AUTH_MODE=google)")
+		}
+		c.PublicURL = u.String()
+	default:
+		return fmt.Errorf("config: AUTH_MODE must be password or google")
+	}
+	return nil
+}
+
+// ParseEmails splits a list of emails on commas, semicolons and whitespace.
+func ParseEmails(raw string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, f := range strings.FieldsFunc(raw, func(r rune) bool { return r == ',' || r == ';' || r == ' ' || r == '\n' || r == '\t' }) {
+		e := strings.ToLower(strings.TrimSpace(f))
+		if strings.Contains(e, "@") && !seen[e] {
+			seen[e] = true
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 // YtDlpExtra splits YTDLP_EXTRA_ARGS on whitespace.
 func (c *Config) YtDlpExtra() []string { return strings.Fields(c.YtDlpExtraArgs) }
 
@@ -112,11 +173,8 @@ func Load() (*Config, error) {
 	if len(cfg.JWTSecret) < 16 {
 		return nil, fmt.Errorf("config: JWT_SECRET must be at least 16 characters")
 	}
-	if cfg.Password == "" {
-		cfg.Password = cfg.LegacyAdminPassword
-	}
-	if cfg.Password == "" {
-		return nil, fmt.Errorf("config: APP_PASSWORD is required")
+	if err := cfg.checkAuth(); err != nil {
+		return nil, err
 	}
 	switch cfg.ClipHeight {
 	case 480, 720, 1080:

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
     ChevronDown,
     FastForward,
@@ -12,6 +12,9 @@ import {
     SkipForward,
     Trophy,
     TriangleAlert,
+    Volume1,
+    Volume2,
+    VolumeX,
 } from 'lucide-react';
 import { remainingMs, useTick } from '../lib/live';
 import { fmtTime } from '../lib/format';
@@ -28,8 +31,20 @@ const PHASE_LABEL = {
     answers: 'Правильні відповіді',
     scoring: 'Підрахунок балів',
     results: 'Оголошення переможців',
+    leaderboard: 'Підсумкова таблиця',
     finished: 'Фінал',
 };
+
+// nextPlace is the podium place the next step reveals (ties share a place).
+function nextPlace(v) {
+    const board = v.board || [];
+    const places = [];
+    board.forEach((b, i) => {
+        if (i > 0 && b.rank === board[i - 1].rank) return;
+        if (i < 3) places.push(b.rank);
+    });
+    return places[places.length - 1 - (v.revealed || 0)];
+}
 
 function primaryAction(v) {
     switch (v?.phase) {
@@ -45,12 +60,98 @@ function primaryAction(v) {
         case 'scoring':
             return { label: 'Оголосити результати', icon: Trophy };
         case 'results':
-            return { label: v.revealed >= (v.board?.length || 0) ? 'Завершити' : 'Відкрити наступне місце', icon: Trophy };
+            return v.revealed >= (v.podium || 0)
+                ? { label: 'Показати всю таблицю', icon: SkipForward }
+                : { label: `Відкрити ${nextPlace(v)} місце`, icon: Trophy };
+        case 'leaderboard':
+            return { label: 'Завершити', icon: SkipForward };
         case 'finished':
             return null;
         default:
             return { label: 'Далі', icon: SkipForward };
     }
+}
+
+const VOLUME_STEP = 0.1;
+const MAX_VOLUME = 2;
+
+// VolumeControl sets the show's volume on every screen: 100% is the clips as
+// cut; above it the screen boosts the sound (a limiter stops it clipping).
+function VolumeControl({ volume, command, disabled }) {
+    const [drag, setDrag] = useState(null); // the slider's value while it moves
+    const sent = useRef(0);
+    const value = drag ?? volume;
+    const pct = Math.round(value * 100);
+    const set = (v) => command('volume', Math.round(Math.min(Math.max(v, 0), MAX_VOLUME) * 100) / 100);
+    const Icon = value === 0 ? VolumeX : value < 0.6 ? Volume1 : Volume2;
+    return (
+        <div className="panel px-4 py-3">
+            <div className="flex items-center justify-between gap-2 text-sm">
+                <span className="inline-flex items-center gap-2 font-bold">
+                    <Icon size={18} /> Гучність
+                </span>
+                <span className={cx('font-mono font-bold', value > 1 ? 'text-accent' : 'text-dim')}>
+                    {pct}%{value > 1 && ' · підсилення'}
+                </span>
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+                <button
+                    type="button"
+                    className="btn btn-sm w-11 shrink-0"
+                    disabled={disabled || value <= 0}
+                    onClick={() => set(value - VOLUME_STEP)}
+                    aria-label="Тихіше"
+                >
+                    −
+                </button>
+                <input
+                    type="range"
+                    min={0}
+                    max={MAX_VOLUME}
+                    step={0.05}
+                    value={value}
+                    disabled={disabled}
+                    className="min-w-0 flex-1"
+                    aria-label="Гучність показу"
+                    onChange={(e) => {
+                        const v = Number(e.target.value);
+                        setDrag(v);
+                        // A few updates a second while dragging, the exact value on release.
+                        if (Date.now() - sent.current > 150) {
+                            sent.current = Date.now();
+                            set(v);
+                        }
+                    }}
+                    onPointerUp={(e) => {
+                        set(Number(e.currentTarget.value));
+                        setDrag(null);
+                    }}
+                    onKeyUp={(e) => {
+                        set(Number(e.currentTarget.value));
+                        setDrag(null);
+                    }}
+                />
+                <button
+                    type="button"
+                    className="btn btn-sm w-11 shrink-0"
+                    disabled={disabled || value >= MAX_VOLUME}
+                    onClick={() => set(value + VOLUME_STEP)}
+                    aria-label="Гучніше"
+                >
+                    +
+                </button>
+                <button
+                    type="button"
+                    className="btn btn-sm btn-ghost shrink-0"
+                    disabled={disabled || value === 1}
+                    onClick={() => set(1)}
+                    title="Повернути 100%"
+                >
+                    100%
+                </button>
+            </div>
+        </div>
+    );
 }
 
 function BigButton({ icon: Icon, children, onClick, disabled, className, title }) {
@@ -95,10 +196,12 @@ export default function RemoteControls({ view, offset, command, status, rehearsa
             } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') command('back');
             else if (e.key === 'p' || e.key === 'з') command('toggle_pause');
             else if (e.key === 'r' || e.key === 'к') command('replay');
+            else if (e.key === '+' || e.key === '=') command('volume', Math.min((view?.volume ?? 1) + VOLUME_STEP, MAX_VOLUME));
+            else if (e.key === '-') command('volume', Math.max((view?.volume ?? 1) - VOLUME_STEP, 0));
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [command, phase]);
+    }, [command, phase, view?.volume]);
 
     const reset = async () => {
         const message = rehearsal ? 'Репетиція повернеться на вітальний екран.' : 'Показ повернеться на вітальний екран. Бали команд не зміняться.';
@@ -135,7 +238,7 @@ export default function RemoteControls({ view, offset, command, status, rehearsa
                 )}
                 {phase === 'results' && (
                     <div className="mt-0.5 text-sm text-dim">
-                        Відкрито {view.revealed} з {view.board?.length || 0} місць
+                        Відкрито {view.revealed} з {view.podium || 0} призових місць
                     </div>
                 )}
                 {host?.current && (
@@ -208,6 +311,8 @@ export default function RemoteControls({ view, offset, command, status, rehearsa
                 </BigButton>
             </div>
 
+            <VolumeControl volume={view?.volume ?? 1} command={command} disabled={!view} />
+
             <div className="panel">
                 <button type="button" onClick={() => setMore((m) => !m)} className="flex w-full items-center justify-between px-4 py-3 text-sm font-bold">
                     Перейти до…
@@ -254,7 +359,7 @@ export default function RemoteControls({ view, offset, command, status, rehearsa
                 </details>
             )}
             <p className="m-0 hidden text-center text-xs text-faint sm:block">
-                Клавіші: Пробіл/→ — далі, ← — назад, P — пауза, R — ще раз
+                Клавіші: Пробіл/→ — далі, ← — назад, P — пауза, R — ще раз, +/− — гучність
             </p>
         </div>
     );

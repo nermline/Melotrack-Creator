@@ -59,11 +59,14 @@ func (s *Server) Router() *gin.Engine {
 
 	api := r.Group("/api")
 	api.GET("/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
+	api.GET("/auth/config", s.authConfig)
 	api.POST("/login", s.login)
 	api.POST("/logout", s.logout)
+	api.GET("/auth/google/start", s.googleStart)
+	api.GET("/auth/google/callback", s.googleCallback)
 
 	priv := api.Group("", s.auth.Middleware())
-	priv.GET("/session", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
+	priv.GET("/session", s.session)
 	priv.GET("/system", s.system)
 
 	priv.GET("/projects", s.listProjects)

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -11,6 +12,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nermline/Melotrack-Creator/internal/audit"
+	"github.com/nermline/Melotrack-Creator/internal/auth"
 	"github.com/nermline/Melotrack-Creator/internal/game"
 	"github.com/nermline/Melotrack-Creator/internal/live"
 )
@@ -37,7 +40,20 @@ func requestLog() gin.HandlerFunc {
 	}
 }
 
+// authConfig tells the login page how to sign in.
+func (s *Server) authConfig(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"mode": s.auth.Mode()})
+}
+
+func (s *Server) session(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"ok": true, "mode": s.auth.Mode(), "user": auth.UserOf(c)})
+}
+
 func (s *Server) login(c *gin.Context) {
+	if s.auth.Mode() != auth.ModePassword {
+		fail(c, http.StatusBadRequest, "password_disabled", "Вхід за паролем вимкнено — увійдіть через Google")
+		return
+	}
 	var in struct {
 		Password string `json:"password"`
 	}
@@ -46,20 +62,67 @@ func (s *Server) login(c *gin.Context) {
 	}
 	ok, wait := s.auth.Login(c, in.Password)
 	if wait > 0 {
+		audit.Record(anonymous, "login.blocked", "ip", c.ClientIP())
 		fail(c, http.StatusTooManyRequests, "rate_limited",
 			fmt.Sprintf("Забагато спроб. Спробуйте за %d хв.", int(math.Ceil(wait.Minutes()))))
 		return
 	}
 	if !ok {
+		audit.Record(anonymous, "login.failed", "ip", c.ClientIP())
 		fail(c, http.StatusUnauthorized, "bad_password", "Невірний пароль")
 		return
 	}
+	audit.Record(auth.User{}.ID(), "login", "ip", c.ClientIP())
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// anonymous is the log author of a failed sign-in.
+const anonymous = "unknown"
+
 func (s *Server) logout(c *gin.Context) {
+	if u, ok := s.auth.Peek(c); ok {
+		audit.Record(u.ID(), "logout", "ip", c.ClientIP())
+	}
 	s.auth.Logout(c)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func (s *Server) googleStart(c *gin.Context) {
+	if s.auth.Mode() != auth.ModeGoogle {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+	s.auth.GoogleStart(c)
+}
+
+// googleCallback finishes "Sign in with Google" and sends the browser on:
+// where it was going, or back to the login page with an error code.
+func (s *Server) googleCallback(c *gin.Context) {
+	if s.auth.Mode() != auth.ModeGoogle {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+	u, next, err := s.auth.GoogleCallback(c)
+	if err != nil {
+		code := "failed"
+		switch {
+		case errors.Is(err, auth.ErrCancelled):
+			code = "cancelled"
+		case errors.Is(err, auth.ErrExpired):
+			code = "expired"
+		case errors.Is(err, auth.ErrNotAllowed):
+			code = "denied"
+		}
+		who := anonymous
+		if u.Email != "" {
+			who = u.Email
+		}
+		audit.Record(who, "login."+code, "ip", c.ClientIP(), "err", err.Error())
+		c.Redirect(http.StatusFound, "/login?error="+code)
+		return
+	}
+	audit.Record(u.ID(), "login", "ip", c.ClientIP(), "name", u.Name)
+	c.Redirect(http.StatusFound, next)
 }
 
 func (s *Server) system(c *gin.Context) {
@@ -131,7 +194,7 @@ func (s *Server) serveLive(c *gin.Context) {
 		badRequest(c, "Некоректний ідентифікатор показу")
 		return
 	}
-	s.hub.Serve(c.Writer, c.Request, pid, session, role)
+	s.hub.Serve(c.Writer, c.Request, pid, session, role, auth.UserOf(c).ID())
 }
 
 var sessionRe = regexp.MustCompile(`^[a-z0-9-]{4,40}$`)
@@ -164,10 +227,10 @@ func (s *Server) showView(projectID uint, session string, host bool) (any, bool)
 	return v, true
 }
 
-func (s *Server) showCommand(projectID uint, session, action string, value float64) {
+func (s *Server) showCommand(projectID uint, session, actor, action string, value float64) {
 	sess, err := s.games.Get(game.Key{Project: projectID, Session: session})
 	if err != nil {
 		return
 	}
-	sess.Command(action, value)
+	sess.Command(actor, action, value)
 }

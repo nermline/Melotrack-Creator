@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/nermline/Melotrack-Creator/internal/api"
+	"github.com/nermline/Melotrack-Creator/internal/audit"
 	"github.com/nermline/Melotrack-Creator/internal/auth"
 	"github.com/nermline/Melotrack-Creator/internal/config"
 	"github.com/nermline/Melotrack-Creator/internal/game"
@@ -97,9 +98,21 @@ func runServer() error {
 		ClipHeight:      cfg.ClipHeight,
 	})
 
-	srv := api.NewServer(db, cfg,
-		auth.New(cfg.JWTSecret, cfg.Password, cfg.SessionTTL, cfg.SecureCookies),
+	if err := audit.Open(filepath.Join(cfg.DataDir, "logs")); err != nil {
+		return err
+	}
+	defer audit.Close()
+	authOpts := auth.Options{Secret: cfg.JWTSecret, TTL: cfg.SessionTTL, SecureCookies: cfg.SecureCookies, Password: cfg.Password}
+	if cfg.AuthMode == "google" {
+		authOpts.Google = &auth.Google{
+			ClientID: cfg.GoogleClientID, ClientSecret: cfg.GoogleClientSecret,
+			RedirectURL: cfg.GoogleRedirectURL(), Allowed: cfg.AllowedEmails,
+		}
+		slog.Info("sign-in with Google", "accounts", len(cfg.AllowedEmails), "redirect", cfg.GoogleRedirectURL())
+	}
+	srv := api.NewServer(db, cfg, auth.New(authOpts),
 		mgr, yt, remotes, live.NewHub(cfg.AllowedOrigins), game.NewSessions(db))
+	audit.Record(audit.System, "server.start", "auth", cfg.AuthMode)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

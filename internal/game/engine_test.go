@@ -90,7 +90,16 @@ func TestFullShow(t *testing.T) {
 		t.Fatalf("revealed = %d, want 2", e.Revealed())
 	}
 	e.Next()
+	expectPhase(t, e, PhaseLeaderboard)
+	e.Next()
 	expectPhase(t, e, PhaseFinished)
+	e.Back()
+	expectPhase(t, e, PhaseLeaderboard)
+	e.Back()
+	expectPhase(t, e, PhaseResults)
+	if e.Revealed() != 2 {
+		t.Fatalf("back from the table: revealed = %d, want the whole podium", e.Revealed())
+	}
 }
 
 func TestEmptyCategorySkipsToCollect(t *testing.T) {
@@ -203,23 +212,50 @@ func TestGotoOutOfRange(t *testing.T) {
 	}
 }
 
-func TestRevealSteps(t *testing.T) {
-	cases := map[int][]int{
-		0: nil,
-		1: {1},
-		3: {1, 2, 3},
-		7: {4, 5, 6, 7},
+// The podium reveals the first three places one by one; tied teams share a
+// place, so a tie for third shows both and a tie for first leaves fewer steps.
+func TestPodiumSteps(t *testing.T) {
+	cases := []struct {
+		ranks []int
+		want  int
+	}{
+		{nil, 0},
+		{[]int{1}, 1},
+		{[]int{1, 2}, 2},
+		{[]int{1, 2, 3, 4, 5, 6, 7}, 3},
+		{[]int{1, 2, 3, 3, 5}, 3},
+		{[]int{1, 1, 3, 4}, 2},
+		{[]int{1, 1, 1, 1}, 1},
 	}
-	for n, want := range cases {
-		got := revealSteps(n)
-		if len(got) != len(want) {
-			t.Fatalf("revealSteps(%d) = %v, want %v", n, got, want)
+	for _, c := range cases {
+		board := make([]Standing, len(c.ranks))
+		for i, r := range c.ranks {
+			board[i] = Standing{Rank: r}
 		}
-		for i := range got {
-			if got[i] != want[i] {
-				t.Fatalf("revealSteps(%d) = %v, want %v", n, got, want)
-			}
+		if got := podiumSteps(board); got != c.want {
+			t.Fatalf("podiumSteps(%v) = %d, want %d", c.ranks, got, c.want)
 		}
+	}
+}
+
+func TestVolume(t *testing.T) {
+	e, _, _ := newTestEngine(1)
+	if e.Volume != 1 {
+		t.Fatalf("default volume = %v", e.Volume)
+	}
+	if !e.Apply("volume", 1.5) || e.Volume != 1.5 {
+		t.Fatalf("volume = %v, want 1.5", e.Volume)
+	}
+	if e.Apply("volume", 1.5) {
+		t.Fatal("unchanged volume reported a change")
+	}
+	e.Apply("volume", 9)
+	if e.Volume != MaxVolume {
+		t.Fatalf("volume = %v, want capped at %v", e.Volume, MaxVolume)
+	}
+	e.Apply("volume", -1)
+	if e.Volume != 0 {
+		t.Fatalf("volume = %v, want 0", e.Volume)
 	}
 }
 

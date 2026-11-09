@@ -76,7 +76,9 @@ function AnswerText({ answer }) {
         <>
             <div style={{ fontWeight: 800, lineHeight: 1.12, textWrap: 'balance' }}>{title}</div>
             {artist && (
-                <div style={{ marginTop: '0.18em', fontSize: '0.74em', fontWeight: 600, lineHeight: 1.15, color: 'var(--dim)', textWrap: 'balance' }}>
+                // The theme's accent colour: readable on every background,
+                // and clearly a second line rather than faded small print.
+                <div style={{ marginTop: '0.22em', fontSize: '0.8em', fontWeight: 700, lineHeight: 1.15, color: 'var(--a2)', textWrap: 'balance' }}>
                     {artist}
                 </div>
             )}

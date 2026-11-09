@@ -105,34 +105,36 @@ export default function ProgramTab({ store }) {
     };
 
     return (
-        <div className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
-            <aside className="lg:sticky lg:top-[120px] lg:self-start">
-                <div className="mb-2 flex items-center justify-between">
+        <div className="grid gap-5 lg:min-h-0 lg:flex-1 lg:grid-cols-[300px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
+            <aside className="lg:flex lg:min-h-0 lg:flex-col">
+                <div className="mb-2 flex shrink-0 items-center justify-between">
                     <div className="eyebrow">Категорії</div>
                     <span className="text-xs text-faint">{cats.length}</span>
                 </div>
-                <Reorder.Group
-                    axis="y"
-                    values={cats}
-                    onReorder={(v) => {
-                        dragging.current = true;
-                        setCats(v);
-                    }}
-                    className="m-0 flex list-none flex-col gap-1.5 p-0"
-                >
-                    {cats.map((c, i) => (
-                        <CategoryRow
-                            key={c.id}
-                            cat={c}
-                            index={i}
-                            media={project.media}
-                            active={selected?.id === c.id}
-                            onSelect={() => select(c.id)}
-                            onDragEnd={commitCatOrder}
-                        />
-                    ))}
-                </Reorder.Group>
-                <form onSubmit={addCategory} className="mt-3 flex gap-2">
+                <motion.div layoutScroll className="lg:-mr-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-2">
+                    <Reorder.Group
+                        axis="y"
+                        values={cats}
+                        onReorder={(v) => {
+                            dragging.current = true;
+                            setCats(v);
+                        }}
+                        className="m-0 flex list-none flex-col gap-1.5 p-0"
+                    >
+                        {cats.map((c, i) => (
+                            <CategoryRow
+                                key={c.id}
+                                cat={c}
+                                index={i}
+                                media={project.media}
+                                active={selected?.id === c.id}
+                                onSelect={() => select(c.id)}
+                                onDragEnd={commitCatOrder}
+                            />
+                        ))}
+                    </Reorder.Group>
+                </motion.div>
+                <form onSubmit={addCategory} className="mt-3 flex shrink-0 gap-2">
                     <input
                         className="field"
                         placeholder="Нова категорія…"
@@ -144,7 +146,7 @@ export default function ProgramTab({ store }) {
                 </form>
             </aside>
 
-            <section className="min-w-0">
+            <section className="min-w-0 lg:flex lg:min-h-0 lg:flex-col">
                 {!selected ? (
                     <div className="panel">
                         <Empty icon={ListMusic} title="Додайте першу категорію">
@@ -273,8 +275,8 @@ function CategoryView({ cat, index, store, onRename, onDelete, onEdit }) {
     };
 
     return (
-        <div>
-            <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+            <div className="mb-4 flex shrink-0 flex-wrap items-center gap-3">
                 <div className="min-w-0 flex-1">
                     <div className="eyebrow">Категорія</div>
                     <InlineEdit
@@ -315,29 +317,31 @@ function CategoryView({ cat, index, store, onRename, onDelete, onEdit }) {
                     </Empty>
                 </div>
             ) : (
-                <Reorder.Group
-                    axis="y"
-                    values={items}
-                    onReorder={(v) => {
-                        dragging.current = true;
-                        setItems(v);
-                    }}
-                    className="m-0 mt-4 flex list-none flex-col gap-2 p-0"
-                >
-                    {items.map((it, i) => (
-                        <SongRow
-                            key={it.id}
-                            item={it}
-                            index={i}
-                            media={project.media[it.media_id]}
-                            mediaProgress={store.mediaProgress[it.media_id]}
-                            clipProgress={store.clipProgress[it.id]}
-                            store={store}
-                            onEdit={() => onEdit(it.id)}
-                            onDragEnd={commitOrder}
-                        />
-                    ))}
-                </Reorder.Group>
+                <motion.div layoutScroll className="mt-4 lg:-mr-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-2 lg:pb-1">
+                    <Reorder.Group
+                        axis="y"
+                        values={items}
+                        onReorder={(v) => {
+                            dragging.current = true;
+                            setItems(v);
+                        }}
+                        className="m-0 flex list-none flex-col gap-2 p-0"
+                    >
+                        {items.map((it, i) => (
+                            <SongRow
+                                key={it.id}
+                                item={it}
+                                index={i}
+                                media={project.media[it.media_id]}
+                                mediaProgress={store.mediaProgress[it.media_id]}
+                                clipProgress={store.clipProgress[it.id]}
+                                store={store}
+                                onEdit={() => onEdit(it.id)}
+                                onDragEnd={commitOrder}
+                            />
+                        ))}
+                    </Reorder.Group>
+                </motion.div>
             )}
         </div>
     );
@@ -392,7 +396,7 @@ function CategoryDetails({ cat, store }) {
         }
     };
     return (
-        <div className="panel mb-3 grid gap-3 p-3 sm:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
+        <div className="panel mb-3 grid shrink-0 gap-3 p-3 sm:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
             <label className="block min-w-0">
                 <span className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-dim">
                     <UserRound size={13} /> Відповідальні
@@ -475,7 +479,7 @@ function AddSongs({ cat, store, onAdded }) {
     };
 
     return (
-        <form onSubmit={add} className="panel p-3">
+        <form onSubmit={add} className="panel shrink-0 p-3">
             <textarea
                 className={cx('field py-2 font-mono text-sm', GROWING)}
                 rows={Math.min(Math.max(lines, 1), 8)}

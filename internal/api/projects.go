@@ -109,6 +109,7 @@ func (s *Server) createProject(c *gin.Context) {
 		failInternal(c, err)
 		return
 	}
+	s.record(c, "project.create", "project", p.ID, "title", p.Title)
 	c.JSON(http.StatusCreated, toProjectDTO(&p))
 }
 
@@ -125,6 +126,8 @@ func (s *Server) updateProject(c *gin.Context) {
 	if !bindJSON(c, &in) {
 		return
 	}
+	var before store.Project
+	s.db.First(&before, pid)
 	upd := map[string]any{}
 	if in.Title != nil {
 		title, ok := cleanTitle(*in.Title, 120)
@@ -163,6 +166,13 @@ func (s *Server) updateProject(c *gin.Context) {
 		failInternal(c, err)
 		return
 	}
+	var ch changeList
+	ch.add("title", before.Title, p.Title)
+	ch.add("theme", before.Theme, p.Theme)
+	ch.add("think_seconds", before.ThinkSeconds, p.ThinkSeconds)
+	if len(ch) > 0 {
+		s.record(c, "project.update", "project", pid, "changes", ch.String())
+	}
 	s.games.Refresh(pid)
 	s.changed(pid)
 	c.JSON(http.StatusOK, toProjectDTO(p))
@@ -173,12 +183,15 @@ func (s *Server) deleteProject(c *gin.Context) {
 	if !ok {
 		return
 	}
+	var before store.Project
+	s.db.First(&before, pid)
 	var itemIDs []uint
 	s.db.Raw(`SELECT i.id FROM items i JOIN categories c ON c.id = i.category_id WHERE c.project_id = ?`, pid).Scan(&itemIDs)
 	if err := s.db.Delete(&store.Project{}, pid).Error; err != nil {
 		failInternal(c, err)
 		return
 	}
+	s.record(c, "project.delete", "project", pid, "title", before.Title, "songs", len(itemIDs))
 	s.games.Drop(pid)
 	for _, id := range itemIDs {
 		s.media.ItemDeleted(id)
@@ -240,5 +253,6 @@ func (s *Server) duplicateProject(c *gin.Context) {
 		failInternal(c, err)
 		return
 	}
+	s.record(c, "project.duplicate", "from", pid, "from_title", src.Title, "project", dst.ID, "title", dst.Title)
 	c.JSON(http.StatusCreated, gin.H{"id": dst.ID})
 }

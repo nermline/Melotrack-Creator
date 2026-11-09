@@ -28,8 +28,8 @@ const (
 // ViewFunc renders the show state for a role; the hub marshals it once per role.
 type ViewFunc func(projectID uint, session string, host bool) (any, bool)
 
-// CommandFunc handles a show command from a remote.
-type CommandFunc func(projectID uint, session, action string, value float64)
+// CommandFunc handles a show command from a remote; actor is who sent it.
+type CommandFunc func(projectID uint, session, actor, action string, value float64)
 
 // IdleFunc is told when the last device of a show disconnects.
 type IdleFunc func(projectID uint, session string)
@@ -79,17 +79,18 @@ type client struct {
 	projectID uint
 	session   string
 	role      Role
+	actor     string // who is signed in on this device (for the action log)
 	conn      *websocket.Conn
 	send      chan []byte
 }
 
 // Serve upgrades the request and keeps the connection until it closes.
-func (h *Hub) Serve(w http.ResponseWriter, r *http.Request, projectID uint, session string, role Role) {
+func (h *Hub) Serve(w http.ResponseWriter, r *http.Request, projectID uint, session string, role Role, actor string) {
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}
-	c := &client{projectID: projectID, session: session, role: role, conn: conn, send: make(chan []byte, 64)}
+	c := &client{projectID: projectID, session: session, role: role, actor: actor, conn: conn, send: make(chan []byte, 64)}
 	h.mu.Lock()
 	if h.rooms[projectID] == nil {
 		h.rooms[projectID] = map[*client]struct{}{}
@@ -171,7 +172,7 @@ func (h *Hub) readPump(c *client) {
 		switch msg.Type {
 		case "cmd":
 			if c.role != RoleScreen && h.command != nil {
-				h.command(c.projectID, c.session, msg.Action, msg.Value)
+				h.command(c.projectID, c.session, c.actor, msg.Action, msg.Value)
 			}
 		case "ping":
 			h.sendTo(c, envelope{Type: "pong", Data: time.Now().UnixMilli()})

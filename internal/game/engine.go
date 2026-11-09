@@ -3,19 +3,22 @@
 // is playing and when it ends.
 package game
 
+import "math"
+
 type Phase string
 
 const (
-	PhaseWelcome   Phase = "welcome"   // project title, categories and teams
-	PhaseCategory  Phase = "category"  // category title card (timed)
-	PhaseCountdown Phase = "countdown" // 3-2-1 before the first song (timed)
-	PhasePlaying   Phase = "playing"   // a clip plays (timed by clip length)
-	PhaseThinking  Phase = "thinking"  // pause to write the answer down (timed)
-	PhaseCollect   Phase = "collect"   // "hand in your sheets, answers coming up"
-	PhaseAnswers   Phase = "answers"   // correct answers of the category
-	PhaseScoring   Phase = "scoring"   // "counting the points…" before the results
-	PhaseResults   Phase = "results"   // winners revealed step by step
-	PhaseFinished  Phase = "finished"  // thank-you screen
+	PhaseWelcome     Phase = "welcome"     // project title, categories and teams
+	PhaseCategory    Phase = "category"    // category title card (timed)
+	PhaseCountdown   Phase = "countdown"   // 3-2-1 before the first song (timed)
+	PhasePlaying     Phase = "playing"     // a clip plays (timed by clip length)
+	PhaseThinking    Phase = "thinking"    // pause to write the answer down (timed)
+	PhaseCollect     Phase = "collect"     // "hand in your sheets, answers coming up"
+	PhaseAnswers     Phase = "answers"     // correct answers of the category
+	PhaseScoring     Phase = "scoring"     // "counting the points…" before the results
+	PhaseResults     Phase = "results"     // the podium revealed place by place
+	PhaseLeaderboard Phase = "leaderboard" // every team, best first
+	PhaseFinished    Phase = "finished"    // thank-you screen
 )
 
 const (
@@ -66,17 +69,23 @@ type Engine struct {
 	Phase  Phase
 	Cat    int
 	Item   int
-	Reveal int // results: number of reveal steps taken
+	Reveal int // results: podium places revealed so far
 	Timer  Timer
 	Cats   []Category
 	Board  []Standing
+	// Volume scales the show's sound on the screens: 1 is as cut, up to
+	// MaxVolume boosts it (a limiter keeps it from clipping).
+	Volume float64
 
 	src Source
 	now func() int64
 }
 
+// MaxVolume is the loudest the remote can turn the show up (200%).
+const MaxVolume = 2.0
+
 func NewEngine(src Source, now func() int64) *Engine {
-	e := &Engine{Phase: PhaseWelcome, src: src, now: now}
+	e := &Engine{Phase: PhaseWelcome, src: src, now: now, Volume: 1}
 	e.Cats = src.Program()
 	return e
 }
@@ -112,6 +121,12 @@ func (e *Engine) Apply(action string, value float64) bool {
 		e.enterCategory(i)
 	case "results":
 		e.enterScoring()
+	case "volume":
+		v := min(max(math.Round(value*100)/100, 0), MaxVolume)
+		if v == e.Volume {
+			return false
+		}
+		e.Volume = v
 	case "reset":
 		e.Cats = e.src.Program()
 		e.enterWelcome()
@@ -160,11 +175,13 @@ func (e *Engine) Next() {
 	case PhaseScoring:
 		e.enterResults()
 	case PhaseResults:
-		if e.Reveal < len(revealSteps(len(e.Board))) {
+		if e.Reveal < podiumSteps(e.Board) {
 			e.Reveal++
 		} else {
-			e.set(PhaseFinished, 0)
+			e.set(PhaseLeaderboard, 0)
 		}
+	case PhaseLeaderboard:
+		e.set(PhaseFinished, 0)
 	}
 }
 
@@ -207,11 +224,12 @@ func (e *Engine) Back() {
 		} else {
 			e.set(PhaseScoring, 0)
 		}
+	case PhaseLeaderboard:
+		e.Reveal = podiumSteps(e.Board)
+		e.set(PhaseResults, 0)
 	case PhaseFinished:
 		if len(e.Board) > 0 {
-			e.Phase = PhaseResults
-			e.Reveal = len(revealSteps(len(e.Board)))
-			e.Timer = Timer{}
+			e.set(PhaseLeaderboard, 0)
 		} else {
 			e.set(PhaseScoring, 0)
 		}
@@ -355,31 +373,31 @@ func (e *Engine) replay() bool {
 	return true
 }
 
-// Revealed is how many teams (counted from the last place) are visible on the results screen.
+// Revealed is how many podium places are visible, counted from the lowest.
 func (e *Engine) Revealed() int {
-	steps := revealSteps(len(e.Board))
-	switch {
-	case e.Phase == PhaseFinished:
-		return len(e.Board)
-	case e.Phase != PhaseResults || e.Reveal == 0:
-		return 0
-	case e.Reveal > len(steps):
-		return len(e.Board)
+	n := podiumSteps(e.Board)
+	switch e.Phase {
+	case PhaseLeaderboard, PhaseFinished:
+		return n
+	case PhaseResults:
+		return min(e.Reveal, n)
 	}
-	return steps[e.Reveal-1]
+	return 0
 }
 
-// revealSteps: everyone below the podium at once, then third, second and first.
-func revealSteps(n int) []int {
-	if n == 0 {
-		return nil
-	}
-	var steps []int
-	if n > 3 {
-		steps = append(steps, n-3)
-	}
-	for i := max(n-2, 1); i <= n; i++ {
-		steps = append(steps, i)
+// podiumSteps is how many places the podium reveals one by one: the teams in
+// the first three positions, grouped by rank (tied teams share a place and
+// appear together, so a tie for third shows both teams).
+func podiumSteps(board []Standing) int {
+	steps := 0
+	for i := range board {
+		if i > 0 && board[i].Rank == board[i-1].Rank {
+			continue
+		}
+		if i >= 3 {
+			break
+		}
+		steps++
 	}
 	return steps
 }

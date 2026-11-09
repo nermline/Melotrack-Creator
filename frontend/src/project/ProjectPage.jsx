@@ -1,5 +1,5 @@
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, ClipboardCheck, ListMusic, MonitorPlay, Users } from 'lucide-react';
+import { ChevronLeft, ClipboardCheck, FileText, ListMusic, MonitorPlay, Users } from 'lucide-react';
 import { api } from '../lib/api';
 import { Button, InlineEdit, Spinner } from '../ui';
 import { cx } from '../lib/cx';
@@ -10,9 +10,11 @@ import ProgramTab from './ProgramTab';
 import TeamsTab from './TeamsTab';
 import ScoringTab from './ScoringTab';
 import ShowTab from './ShowTab';
+import SheetsTab from './SheetsTab';
 
 const TABS = [
     { id: 'program', label: 'Програма', icon: ListMusic },
+    { id: 'sheets', label: 'Бланки', icon: FileText },
     { id: 'teams', label: 'Команди', icon: Users },
     { id: 'scoring', label: 'Оцінювання', icon: ClipboardCheck },
     { id: 'show', label: 'Показ', icon: MonitorPlay },
@@ -35,8 +37,12 @@ export default function ProjectPage() {
         }
     };
 
+    // The program fills the window on wide screens: its category list and song
+    // list scroll on their own instead of the whole page.
+    const fill = tab === 'program';
+
     return (
-        <>
+        <div className={cx(fill && 'lg:flex lg:h-dvh lg:flex-col')}>
             <TopBar right={<LiveDot status={store.live.status} />}>
                 <Button variant="ghost" size="sm" icon={ChevronLeft} onClick={() => navigate('/')} className="shrink-0">
                     <span className="hidden sm:inline">Мелотреки</span>
@@ -73,7 +79,7 @@ export default function ProjectPage() {
                 </div>
             </nav>
 
-            <main className="mx-auto max-w-[1500px] px-4 py-6">
+            <main className={cx('mx-auto w-full max-w-[1500px] px-4 py-6', fill && 'lg:flex lg:min-h-0 lg:flex-1 lg:flex-col')}>
                 {error && <p className="text-bad">{error}</p>}
                 {!project && !error && (
                     <div className="py-16 text-center text-dim">
@@ -84,7 +90,8 @@ export default function ProjectPage() {
                 {project && tab === 'teams' && <TeamsTab store={store} />}
                 {project && tab === 'scoring' && <ScoringTab store={store} />}
                 {project && tab === 'show' && <ShowTab store={store} />}
+                {project && tab === 'sheets' && <SheetsTab store={store} />}
             </main>
-        </>
+        </div>
     );
 }

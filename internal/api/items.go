@@ -162,6 +162,7 @@ func (s *Server) createItems(c *gin.Context) {
 		s.media.MediaAdded(mediaIDs[i])
 		s.media.Reconcile(id, 0)
 	}
+	s.record(c, "item.add", "project", cat.ProjectID, "category", cat.Title, "songs", len(created), "youtube", strings.Join(ids, ","))
 	s.changed(cat.ProjectID)
 
 	var items []store.Item
@@ -205,6 +206,7 @@ func (s *Server) createUploadItem(c *gin.Context) {
 		return
 	}
 	s.media.IngestUpload(m.ID, tmp)
+	s.record(c, "item.add_file", "project", cat.ProjectID, "category", cat.Title, "item", it.ID, "file", name)
 	s.changed(cat.ProjectID)
 	s.itemResponse(c, http.StatusCreated, it.ID)
 }
@@ -254,6 +256,7 @@ func (s *Server) updateItem(c *gin.Context) {
 	if !bindJSON(c, &in) {
 		return
 	}
+	before := *it
 
 	newMedia := false
 	moved := false
@@ -341,6 +344,9 @@ func (s *Server) updateItem(c *gin.Context) {
 		s.media.MediaAdded(it.MediaID)
 		s.media.ScheduleGC()
 	}
+	if ch := itemChanges(&before, it); len(ch) > 0 {
+		s.record(c, "item.update", "project", pid, "item", it.ID, "song", s.itemLabel(it), "changes", ch.String())
+	}
 	// Debounced: dragging a slider produces one render, not twenty.
 	s.media.Reconcile(it.ID, 800*time.Millisecond)
 	if newMedia || moved {
@@ -349,6 +355,26 @@ func (s *Server) updateItem(c *gin.Context) {
 		s.ItemChanged(it.ID)
 	}
 	s.itemResponse(c, http.StatusOK, it.ID)
+}
+
+// itemChanges lists what an edit changed, for the action log.
+func itemChanges(a, b *store.Item) changeList {
+	var ch changeList
+	ch.add("answer", a.Answer, b.Answer)
+	ch.add("alt_answer", a.AltAnswer, b.AltAnswer)
+	ch.add("show_video", a.ShowVideo, b.ShowVideo)
+	ch.add("start", a.StartSec, b.StartSec)
+	ch.add("end", a.EndSec, b.EndSec)
+	ch.add("gain_db", a.GainDB, b.GainDB)
+	ch.add("frame", a.Frame, b.Frame)
+	ch.add("crop", fmt.Sprint(a.CropX, a.CropY, a.CropW, a.CropH), fmt.Sprint(b.CropX, b.CropY, b.CropW, b.CropH))
+	ch.add("reverse", a.Reverse, b.Reverse)
+	ch.add("configured", a.Configured, b.Configured)
+	if a.MediaID != b.MediaID {
+		ch.add("youtube", a.Media.YouTubeID, b.Media.YouTubeID)
+	}
+	ch.add("category", a.CategoryID, b.CategoryID)
+	return ch
 }
 
 type validationError string
@@ -413,6 +439,7 @@ func (s *Server) deleteItem(c *gin.Context) {
 		return
 	}
 	s.media.ItemDeleted(it.ID)
+	s.record(c, "item.delete", "project", pid, "item", it.ID, "song", s.itemLabel(it))
 	s.changed(pid)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -439,6 +466,7 @@ func (s *Server) orderItems(c *gin.Context) {
 		failInternal(c, err)
 		return
 	}
+	s.record(c, "item.reorder", "project", cat.ProjectID, "category", cat.Title)
 	s.changed(cat.ProjectID)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -488,6 +516,7 @@ func (s *Server) uploadImage(c *gin.Context) {
 		failInternal(c, err)
 		return
 	}
+	s.record(c, "item.image", "item", it.ID, "song", s.itemLabel(it))
 	s.media.ScheduleGC()
 	s.ItemChanged(it.ID)
 	s.itemResponse(c, http.StatusOK, it.ID)
@@ -514,6 +543,7 @@ func (s *Server) deleteImage(c *gin.Context) {
 		failInternal(c, err)
 		return
 	}
+	s.record(c, "item.image_remove", "item", it.ID, "song", s.itemLabel(it))
 	s.media.ScheduleGC()
 	s.ItemChanged(it.ID)
 	s.itemResponse(c, http.StatusOK, it.ID)
@@ -526,11 +556,12 @@ func (s *Server) uploadSource(c *gin.Context) {
 	if !ok {
 		return
 	}
-	tmp, _, ok := s.receiveUpload(c, "file")
+	tmp, name, ok := s.receiveUpload(c, "file")
 	if !ok {
 		return
 	}
 	s.media.IngestUpload(it.MediaID, tmp)
+	s.record(c, "item.replace_file", "item", it.ID, "song", s.itemLabel(it), "file", name)
 	s.itemResponse(c, http.StatusAccepted, it.ID)
 }
 
@@ -543,6 +574,7 @@ func (s *Server) retryDownload(c *gin.Context) {
 		badRequest(c, err.Error())
 		return
 	}
+	s.record(c, "item.retry_download", "item", it.ID, "song", s.itemLabel(it))
 	s.itemResponse(c, http.StatusAccepted, it.ID)
 }
 
@@ -563,6 +595,7 @@ func (s *Server) forceRender(c *gin.Context) {
 		return
 	}
 	s.media.ForceRender(it.ID)
+	s.record(c, "item.recut", "item", it.ID, "song", s.itemLabel(it))
 	s.itemResponse(c, http.StatusAccepted, it.ID)
 }
 

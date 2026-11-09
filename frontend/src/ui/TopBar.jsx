@@ -1,6 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
 import { api } from '../lib/api';
+import { useSession } from '../lib/session';
 import { cx } from '../lib/cx';
 import { Button } from './index';
 import Logo from './Logo';
@@ -17,6 +18,25 @@ export function LiveDot({ status }) {
         <span className="inline-flex items-center gap-1.5 text-xs text-dim" title="Живе оновлення">
             <span className={cx('h-2 w-2 rounded-full', cls)} />
             {label}
+        </span>
+    );
+}
+
+// Who is signed in (Google mode): a photo, or the first letter of the name.
+function Me() {
+    const user = useSession()?.user;
+    if (!user?.email) return null;
+    const label = user.name ? `${user.name} · ${user.email}` : user.email;
+    return (
+        <span className="hidden items-center gap-2 text-xs text-dim sm:inline-flex" title={label}>
+            {user.picture ? (
+                <img src={user.picture} alt="" referrerPolicy="no-referrer" className="h-7 w-7 rounded-full" />
+            ) : (
+                <span className="grid h-7 w-7 place-items-center rounded-full bg-accent/20 font-bold text-accent">
+                    {(user.name || user.email)[0].toUpperCase()}
+                </span>
+            )}
+            <span className="hidden max-w-[16ch] truncate lg:inline">{user.name || user.email}</span>
         </span>
     );
 }
@@ -39,6 +59,7 @@ export default function TopBar({ children, right }) {
                 </Link>
                 <div className="flex min-w-0 flex-1 items-center gap-2">{children}</div>
                 {right}
+                <Me />
                 <Button variant="ghost" size="sm" icon={LogOut} onClick={logout} title="Вийти" aria-label="Вийти" />
             </div>
         </header>

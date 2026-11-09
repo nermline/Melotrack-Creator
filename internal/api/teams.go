@@ -75,6 +75,7 @@ func (s *Server) createTeam(c *gin.Context) {
 		fail(c, status, "invalid", msg)
 		return
 	}
+	s.record(c, "team.create", "project", pid, "team", t.ID, "name", t.Name)
 	s.teamsChanged(pid)
 	c.JSON(status, toTeamDTO(t))
 }
@@ -107,6 +108,7 @@ func (s *Server) updateTeam(c *gin.Context) {
 	if !bindJSON(c, &in) {
 		return
 	}
+	before := *t
 	upd := map[string]any{}
 	if in.Name != nil {
 		name, ok := cleanTitle(*in.Name, 40)
@@ -128,6 +130,9 @@ func (s *Server) updateTeam(c *gin.Context) {
 		}
 	}
 	s.db.First(t, t.ID)
+	if before.Name != t.Name {
+		s.record(c, "team.rename", "project", t.ProjectID, "team", t.ID, "changes", "name: "+logValue(before.Name)+" → "+logValue(t.Name))
+	}
 	s.teamsChanged(t.ProjectID)
 	c.JSON(http.StatusOK, toTeamDTO(t))
 }
@@ -141,6 +146,7 @@ func (s *Server) deleteTeam(c *gin.Context) {
 		failInternal(c, err)
 		return
 	}
+	s.record(c, "team.delete", "project", t.ProjectID, "team", t.ID, "name", t.Name)
 	s.teamsChanged(t.ProjectID)
 	s.hub.Publish(t.ProjectID, "scores_reload", nil)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -200,6 +206,11 @@ func (s *Server) putScore(c *gin.Context) {
 		notFound(c, "Пісню")
 		return
 	}
+	var old *float64
+	var prev store.Score
+	if s.db.Where("team_id = ? AND item_id = ?", in.TeamID, in.ItemID).Limit(1).Find(&prev).RowsAffected > 0 {
+		old = &prev.Points
+	}
 	var err error
 	if in.Points == nil {
 		err = s.db.Where("team_id = ? AND item_id = ?", in.TeamID, in.ItemID).Delete(&store.Score{}).Error
@@ -213,6 +224,12 @@ func (s *Server) putScore(c *gin.Context) {
 	if err != nil {
 		failInternal(c, err)
 		return
+	}
+	if logValue(old) != logValue(in.Points) {
+		var it store.Item
+		s.db.First(&it, in.ItemID)
+		s.record(c, "score.set", "project", t.ProjectID, "team", t.Name, "song", s.itemLabel(&it),
+			"points", logValue(old)+" → "+logValue(in.Points))
 	}
 	s.hub.Publish(t.ProjectID, "score", in)
 	c.JSON(http.StatusOK, in)

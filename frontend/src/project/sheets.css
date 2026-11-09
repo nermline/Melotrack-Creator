@@ -1,0 +1,131 @@
+/* Answer sheets for the teams: one A4 page per category, laid out in
+   millimetres so the preview, the printout and a saved PDF match. */
+
+.sheet {
+  --teal: #1497ab;
+  width: 210mm;
+  height: 297mm;
+  box-sizing: border-box;
+  padding: 11mm 20mm 16mm;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: hidden;
+  background: #fff;
+  color: #111;
+  font-family: "Lora Variable", Georgia, serif;
+  text-align: center;
+  font-variant-numeric: lining-nums;
+}
+.sheet-header {
+  color: var(--teal);
+  font-size: 25pt;
+  font-weight: 700;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+.sheet-title {
+  max-width: 100%;
+  margin-top: 1.5mm;
+  font-weight: 700;
+  line-height: 1.05;
+  text-transform: uppercase;
+  text-wrap: balance;
+}
+.sheet-criteria {
+  max-width: 100%;
+  margin-top: 1.5mm;
+  color: #777;
+  font-size: 11pt;
+  letter-spacing: 0.03em;
+  line-height: 1.25;
+  text-transform: uppercase;
+  white-space: pre-line;
+}
+.sheet-team {
+  margin-top: 6mm;
+  color: var(--teal);
+  font-size: 25pt;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+/* Room to write the team's name, underlined in the accent colour. */
+.sheet-team-line {
+  width: 100%;
+  margin-top: 14mm;
+  border-bottom: 1.4mm solid var(--teal);
+}
+.sheet-answers {
+  margin-top: 7mm;
+  color: #777;
+  font-size: 12pt;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+/* Answer lines spread over the rest of the page, but never further apart
+   than 40 mm (a short category does not get huge gaps). */
+.sheet-lines {
+  flex: 1;
+  width: 100%;
+  max-height: calc(var(--rows) * 40mm);
+  margin-top: 5mm;
+  display: grid;
+  grid-template-rows: repeat(var(--rows), auto);
+  grid-auto-flow: column;
+  align-content: space-between;
+  column-gap: 10mm;
+}
+.sheet-line {
+  display: flex;
+  align-items: flex-end;
+  gap: 2mm;
+  text-align: left;
+}
+.sheet-line span {
+  line-height: 1;
+}
+.sheet-line i {
+  flex: 1;
+  margin-bottom: 1.2mm;
+  border-bottom: 0.7mm solid #111;
+}
+
+/* The print page: sheets on a grey desk on screen, bare pages on paper. */
+.sheets-print {
+  min-height: 100vh;
+  padding: 18mm 0 10mm;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8mm;
+  background: #e8e8ee;
+}
+.sheets-print .sheet {
+  box-shadow: 0 2mm 8mm rgb(0 0 0 / 0.18);
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+  html,
+  body {
+    background: #fff !important;
+  }
+  .sheets-print {
+    display: block;
+    padding: 0;
+    background: none;
+  }
+  .sheets-print .sheet {
+    box-shadow: none;
+    break-after: page;
+  }
+  .sheets-print .sheet:last-child {
+    break-after: auto;
+  }
+  .no-print {
+    display: none !important;
+  }
+}

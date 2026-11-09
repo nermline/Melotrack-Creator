@@ -7,7 +7,7 @@ import { remainingMs, useTick } from '../lib/live';
 import { fmtPoints, plural, points, songs } from '../lib/format';
 import { Backdrop, PlayingVisual, RingTimer } from './visuals';
 import Answers from './Answers';
-import { cues } from './sound';
+import { cues, routeMedia, setVolume } from './sound';
 import './show.css';
 
 const fade = {
@@ -62,6 +62,10 @@ function StageView({ view, offset = 0, unlocked = false, preview = false }) {
     const frac = dur ? rem / dur : 0;
 
     useCues(view, sec, unlocked && !preview);
+    const volume = view?.volume ?? 1;
+    useEffect(() => {
+        if (!preview) setVolume(volume);
+    }, [volume, preview]);
 
     const item = view?.category?.items?.[view.item_index];
     const videoOn = phase === 'playing' && item?.show_video && !!item?.clip_url;
@@ -205,6 +209,8 @@ function Phase({ view, sec, frac, preview, videoOn }) {
             );
         case 'results':
             return <Results view={view} preview={preview} />;
+        case 'leaderboard':
+            return <Leaderboard view={view} />;
         case 'finished':
             return <Finished view={view} preview={preview} />;
         default:
@@ -377,115 +383,166 @@ function podiumFont(name, base, width) {
     return Math.min(base, (width * 0.92) / (longest * 0.82)).toFixed(2);
 }
 
-function Results({ view, preview }) {
-    const board = view.board || [];
-    const n = board.length;
-    const shown = (i) => i >= n - view.revealed;
-    const podium = board.slice(0, 3);
-    const rest = board.slice(3);
-    const allOut = view.revealed >= n && n > 0;
-    const canvas = useConfetti(allOut, preview, view.theme);
+// podiumPlaces groups the first three positions by rank: teams with equal
+// points share a pedestal (the server counts the same places).
+function podiumPlaces(board) {
+    const places = [];
+    board.forEach((b, i) => {
+        if (i > 0 && b.rank === board[i - 1].rank) places[places.length - 1].push(b);
+        else if (i < 3) places.push([b]);
+    });
+    return places;
+}
 
-    const order = [1, 0, 2].filter((i) => i < podium.length);
-    const heights = { 0: 34, 1: 25, 2: 18 };
+const PEDESTAL = [
+    { width: 38, height: 36 },
+    { width: 31, height: 27 },
+    { width: 31, height: 20 },
+];
+
+// Results: only the podium, revealed from the lowest place up.
+function Results({ view, preview }) {
+    const places = podiumPlaces(view.board || []);
+    const n = places.length;
+    const shown = (p) => p >= n - view.revealed;
+    const allOut = n > 0 && view.revealed >= n;
+    const canvas = useConfetti(allOut, preview, view.theme);
+    const order = [1, 0, 2].filter((p) => p < n);
 
     return (
         <div className="layer" style={{ justifyContent: 'flex-start', paddingTop: '5cqmin' }}>
             {canvas}
             <motion.div className="display title-l" {...rise(0)}>
-                {allOut ? 'Переможці!' : 'Результати'}
+                {allOut ? 'Переможці!' : 'Хто ж переміг?'}
             </motion.div>
-            <div style={{ flex: 1, width: '100%', display: 'flex', gap: '4cqw', alignItems: 'flex-end', justifyContent: 'center', marginTop: '2cqmin' }}>
-                {rest.length > 0 && (
-                    <div
-                        style={{
-                            flex: '0 1 40cqw',
-                            alignSelf: 'center',
-                            display: 'grid',
-                            gridTemplateColumns: rest.length > 8 ? '1fr 1fr' : '1fr',
-                            gap: '0.8cqmin 2cqmin',
-                            fontSize: `min(3.8cqmin, ${(52 / Math.ceil(rest.length / (rest.length > 8 ? 2 : 1))).toFixed(1)}cqh)`,
-                        }}
-                    >
-                        {rest.map((b, j) => {
-                            const i = j + 3;
-                            return (
-                                <motion.div
-                                    key={b.team_id}
-                                    className="card"
-                                    style={{ display: 'flex', alignItems: 'center', gap: '1.5cqmin', padding: '0.7em 1em', textAlign: 'left' }}
-                                    animate={{ opacity: shown(i) ? 1 : 0.18, x: shown(i) ? 0 : '-2cqmin' }}
-                                    transition={{ delay: shown(i) ? (n - 1 - i) * 0.08 : 0 }}
-                                >
-                                    <span className="display" style={{ color: 'var(--dim)', fontStyle: 'normal', minWidth: '1.6em' }}>
-                                        {b.rank}
-                                    </span>
-                                    <span style={{ flex: 1, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                        {shown(i) ? b.name : '• • •'}
-                                    </span>
-                                    <span className="display" style={{ fontStyle: 'normal' }}>
-                                        {shown(i) ? fmtPoints(b.points) : ''}
-                                    </span>
-                                </motion.div>
-                            );
-                        })}
-                    </div>
-                )}
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '1.6cqmin', height: '100%' }}>
-                    {order.map((i) => {
-                        const b = podium[i];
-                        const on = shown(i);
-                        const color = MEDAL[b.rank] || 'var(--dim)';
-                        return (
-                            <div key={b.team_id} style={{ width: i === 0 ? '28cqmin' : '24cqmin', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
-                                <AnimatePresence>
-                                    {on && (
-                                        <motion.div
-                                            style={{ textAlign: 'center', marginBottom: '1.5cqmin', width: '100%' }}
-                                            initial={{ opacity: 0, y: '6cqmin', scale: 0.7 }}
-                                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                                            transition={{ type: 'spring', stiffness: 140, damping: 14 }}
-                                        >
+            <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: '2cqmin', marginTop: '2cqmin' }}>
+                {order.map((p) => {
+                    const teams = places[p];
+                    const on = shown(p);
+                    const rank = teams[0].rank;
+                    const color = MEDAL[rank] || 'var(--dim)';
+                    const { width, height } = PEDESTAL[p];
+                    // Tied teams share the pedestal: smaller names, one per line.
+                    const base = (p === 0 ? 5.6 : 4.4) / Math.sqrt(teams.length);
+                    return (
+                        <div
+                            key={rank}
+                            style={{ width: `${width}cqmin`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}
+                        >
+                            <AnimatePresence>
+                                {on && (
+                                    <motion.div
+                                        style={{ textAlign: 'center', marginBottom: '1.5cqmin', width: '100%' }}
+                                        initial={{ opacity: 0, y: '6cqmin', scale: 0.7 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        transition={{ type: 'spring', stiffness: 140, damping: 14 }}
+                                    >
+                                        {teams.map((b) => (
                                             <div
+                                                key={b.team_id}
                                                 className="display"
                                                 style={{
-                                                    fontSize: `${podiumFont(b.name, i === 0 ? 5.2 : 4, i === 0 ? 28 : 24)}cqmin`,
+                                                    fontSize: `${podiumFont(b.name, base, width)}cqmin`,
                                                     lineHeight: 1.1,
                                                     textShadow: 'var(--glow)',
                                                     overflowWrap: 'break-word',
+                                                    marginTop: '0.4cqmin',
                                                 }}
                                             >
                                                 {b.name}
                                             </div>
-                                            <div className="sub" style={{ marginTop: '0.6cqmin' }}>
-                                                {points(b.points)}
-                                            </div>
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
-                                <motion.div
-                                    style={{
-                                        width: '100%',
-                                        borderRadius: '1.5cqmin 1.5cqmin 0 0',
-                                        background: `linear-gradient(180deg, color-mix(in srgb, ${color} 55%, transparent), color-mix(in srgb, ${color} 12%, transparent))`,
-                                        border: `1px solid color-mix(in srgb, ${color} 60%, transparent)`,
-                                        borderBottom: 'none',
-                                        display: 'grid',
-                                        placeItems: 'start center',
-                                        paddingTop: '1.5cqmin',
-                                    }}
-                                    initial={{ height: 0 }}
-                                    animate={{ height: `${heights[i]}cqh` }}
-                                    transition={{ duration: 0.8, delay: 0.2 + i * 0.1 }}
-                                >
-                                    <span className="display" style={{ fontSize: '7cqmin', color, fontStyle: 'normal', opacity: on ? 1 : 0.5 }}>
-                                        {on ? b.rank : '?'}
-                                    </span>
-                                </motion.div>
-                            </div>
-                        );
-                    })}
-                </div>
+                                        ))}
+                                        <div className="sub" style={{ marginTop: '0.8cqmin' }}>
+                                            {points(teams[0].points)}
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                            <motion.div
+                                style={{
+                                    width: '100%',
+                                    borderRadius: '1.5cqmin 1.5cqmin 0 0',
+                                    background: `linear-gradient(180deg, color-mix(in srgb, ${color} 55%, transparent), color-mix(in srgb, ${color} 12%, transparent))`,
+                                    border: `1px solid color-mix(in srgb, ${color} 60%, transparent)`,
+                                    borderBottom: 'none',
+                                    display: 'grid',
+                                    placeItems: 'start center',
+                                    paddingTop: '1.5cqmin',
+                                }}
+                                initial={{ height: 0 }}
+                                animate={{ height: `${height}cqh` }}
+                                transition={{ duration: 0.8, delay: 0.2 + p * 0.1 }}
+                            >
+                                <span className="display" style={{ fontSize: '8cqmin', color, fontStyle: 'normal', opacity: on ? 1 : 0.5 }}>
+                                    {on ? rank : '?'}
+                                </span>
+                            </motion.div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+// Leaderboard: every team in one column, best first (two columns when there
+// are too many to read in one).
+function Leaderboard({ view }) {
+    const board = view.board || [];
+    const n = board.length;
+    const cols = n > 14 ? 2 : 1;
+    const rows = Math.ceil(n / cols);
+    const row = Math.min(8.5, 70 / Math.max(rows, 1));
+    return (
+        <div className="layer" style={{ justifyContent: 'flex-start', paddingTop: '5cqmin' }}>
+            <motion.div className="display title-l" {...rise(0)}>
+                Підсумкова таблиця
+            </motion.div>
+            <div
+                style={{
+                    flex: 1,
+                    display: 'grid',
+                    gridTemplateColumns: `repeat(${cols}, ${cols === 1 ? '66cqw' : '42cqw'})`,
+                    gridTemplateRows: `repeat(${rows}, ${row.toFixed(2)}cqh)`,
+                    gridAutoFlow: 'column',
+                    gap: `${(row * 0.14).toFixed(2)}cqh 3cqw`,
+                    alignContent: 'center',
+                    justifyContent: 'center',
+                    marginTop: '2cqmin',
+                    fontSize: `${(row * 0.42).toFixed(2)}cqh`,
+                }}
+            >
+                {board.map((b, i) => {
+                    const medal = MEDAL[b.rank];
+                    return (
+                        <motion.div
+                            key={b.team_id}
+                            className="card"
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '1em',
+                                padding: '0 1em',
+                                textAlign: 'left',
+                                // Solid enough to read over the theme's backdrop on a projector.
+                                background: 'color-mix(in srgb, var(--bg) 78%, transparent)',
+                                borderColor: medal ? `color-mix(in srgb, ${medal} 55%, transparent)` : undefined,
+                            }}
+                            initial={{ opacity: 0, x: '-3cqmin' }}
+                            animate={{ opacity: 1, x: 0, transition: { delay: 0.15 + i * 0.05 } }}
+                        >
+                            <span className="display" style={{ minWidth: '1.8em', fontStyle: 'normal', color: medal || 'var(--dim)' }}>
+                                {b.rank}
+                            </span>
+                            <span style={{ flex: 1, minWidth: 0, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {b.name}
+                            </span>
+                            <span className="display" style={{ fontStyle: 'normal', color: medal || 'var(--ink)' }}>
+                                {fmtPoints(b.points)}
+                            </span>
+                        </motion.div>
+                    );
+                })}
             </div>
         </div>
     );
@@ -524,6 +581,11 @@ function ClipLayer({ view, offset, unlocked, visible }) {
         [view.category, index, songPhase],
     );
     const active = view.phase === 'playing' ? view.category?.items?.[view.item_index] : null;
+
+    // Once sound is unlocked, clips play through the show's volume.
+    useEffect(() => {
+        if (unlocked) items.forEach((it) => routeMedia(refs.current[it.id]));
+    }, [items, unlocked]);
 
     useEffect(() => {
         const sync = () => {
@@ -584,9 +646,10 @@ function useCues(view, sec, enabled) {
             if (view.phase === 'thinking' && sec !== prev.sec && sec > 0 && sec <= 5) cues.tick(sec <= 3);
             if (view.phase === 'answers' && phaseChanged) cues.reveal();
             if (view.phase === 'results' && view.revealed > prev.revealed) {
-                if (view.revealed >= (view.board?.length || 0)) cues.fanfare();
+                if (view.revealed >= (view.podium || 0)) cues.fanfare();
                 else cues.reveal();
             }
+            if (view.phase === 'leaderboard' && phaseChanged) cues.reveal();
         }
         last.current = { phase: view.phase, sec, revealed: view.revealed };
     }, [view, sec, enabled]);

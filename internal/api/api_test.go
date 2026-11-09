@@ -31,6 +31,12 @@ type env struct {
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
+	return newEnvAuth(t, auth.Options{Password: "secret"})
+}
+
+// newEnvAuth starts a server with the given sign-in settings.
+func newEnvAuth(t *testing.T, opts auth.Options) *env {
+	t.Helper()
 	dir := t.TempDir()
 	cfg := &config.Config{DataDir: dir, StaticDir: filepath.Join(dir, "nope"), MaxUploadMB: 10, ClipHeight: 720}
 	st, err := media.NewStorage(dir)
@@ -46,7 +52,8 @@ func newEnv(t *testing.T) *env {
 	ff := &media.FFmpeg{FFmpeg: "/nonexistent/ffmpeg", FFprobe: "/nonexistent/ffprobe"}
 	mgr := media.NewManager(db, st, ff, nil, media.LocalDownloader{YT: yt}, media.LocalRenderer{FF: ff},
 		media.Options{DownloadWorkers: 1, RenderWorkers: 1, ClipHeight: 720})
-	s := NewServer(db, cfg, auth.New("0123456789abcdef0123", "secret", time.Hour, false), mgr, yt, nil, live.NewHub(nil), game.NewSessions(db))
+	opts.Secret, opts.TTL = "0123456789abcdef0123", time.Hour
+	s := NewServer(db, cfg, auth.New(opts), mgr, yt, nil, live.NewHub(nil), game.NewSessions(db))
 	ts := httptest.NewServer(s.Router())
 	t.Cleanup(ts.Close)
 	jar, _ := cookiejar.New(nil)
@@ -375,6 +382,18 @@ func readShowNow(t *testing.T, ws *websocket.Conn) map[string]any {
 	}
 }
 
+// waitShow reads show states until ok accepts one.
+func waitShow(t *testing.T, ws *websocket.Conn, what string, ok func(map[string]any) bool) map[string]any {
+	t.Helper()
+	for range 10 {
+		if v := readShow(t, ws); ok(v) {
+			return v
+		}
+	}
+	t.Fatalf("never got %s", what)
+	return nil
+}
+
 func waitPhase(t *testing.T, ws *websocket.Conn, phase string) map[string]any {
 	t.Helper()
 	for range 10 {
@@ -384,4 +403,51 @@ func waitPhase(t *testing.T, ws *websocket.Conn, phase string) map[string]any {
 	}
 	t.Fatalf("phase %s never arrived", phase)
 	return nil
+}
+
+// The winners: the podium place by place (third first), then every team in a
+// table, then the thank-you screen. The remote also sets the show's volume.
+func TestResultsAndVolume(t *testing.T) {
+	e := newEnv(t)
+	e.do("POST", "/api/login", map[string]string{"password": "secret"}, http.StatusOK)
+	pid := id(e.do("POST", "/api/projects", map[string]string{"title": "Фінал"}, http.StatusCreated))
+	cid := id(e.do("POST", fmt.Sprintf("/api/projects/%d/categories", pid), map[string]string{"title": "К"}, http.StatusCreated))
+	res := e.do("POST", fmt.Sprintf("/api/categories/%d/items", cid), map[string]any{"urls": []string{"https://youtu.be/dQw4w9WgXcQ"}}, http.StatusCreated)
+	iid := id(res["items"].([]any)[0].(map[string]any))
+	for i, pts := range []float64{5, 3, 3, 1} { // B and C tie for second
+		tid := id(e.do("POST", fmt.Sprintf("/api/projects/%d/teams", pid), map[string]string{"name": string(rune('A' + i))}, http.StatusCreated))
+		e.do("PUT", "/api/scores", map[string]any{"team_id": tid, "item_id": iid, "points": pts}, http.StatusOK)
+	}
+
+	ws := e.dialLive(pid, "remote")
+	screen := e.dialLive(pid, "screen")
+	readShow(t, ws)
+	readShow(t, screen)
+	ws.WriteJSON(map[string]any{"type": "cmd", "action": "volume", "value": 1.4})
+	waitShow(t, screen, "volume 1.4 on the screen", func(v map[string]any) bool { return v["volume"].(float64) == 1.4 })
+
+	ws.WriteJSON(map[string]any{"type": "cmd", "action": "results"})
+	waitPhase(t, ws, "scoring")
+	ws.WriteJSON(map[string]any{"type": "cmd", "action": "next"})
+	v := waitPhase(t, ws, "results")
+	// Places: A first, B and C share second, D is not on the podium.
+	if v["podium"].(float64) != 2 || v["revealed"].(float64) != 0 {
+		t.Fatalf("podium %v revealed %v", v["podium"], v["revealed"])
+	}
+	for want := 1; want <= 2; want++ {
+		ws.WriteJSON(map[string]any{"type": "cmd", "action": "next"})
+		waitShow(t, ws, fmt.Sprintf("%d podium places", want), func(v map[string]any) bool {
+			return v["phase"] == "results" && int(v["revealed"].(float64)) == want
+		})
+	}
+	ws.WriteJSON(map[string]any{"type": "cmd", "action": "next"})
+	v = waitPhase(t, ws, "leaderboard")
+	board := v["board"].([]any)
+	if len(board) != 4 || board[3].(map[string]any)["name"] != "D" || board[1].(map[string]any)["rank"].(float64) != 2 {
+		t.Fatalf("table: %v", board)
+	}
+	ws.WriteJSON(map[string]any{"type": "cmd", "action": "next"})
+	if v = waitPhase(t, ws, "finished"); v["volume"].(float64) != 1.4 {
+		t.Fatalf("volume lost: %v", v["volume"])
+	}
 }

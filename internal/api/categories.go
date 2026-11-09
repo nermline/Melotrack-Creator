@@ -57,6 +57,7 @@ func (s *Server) createCategory(c *gin.Context) {
 		failInternal(c, err)
 		return
 	}
+	s.record(c, "category.create", "project", pid, "category", cat.ID, "title", cat.Title)
 	s.changed(pid)
 	c.JSON(http.StatusCreated, categoryDTO{ID: cat.ID, Title: cat.Title, Position: cat.Position, Items: []itemDTO{}})
 }
@@ -99,6 +100,7 @@ func (s *Server) updateCategory(c *gin.Context) {
 		}
 		upd["criteria"] = criteria
 	}
+	before := *cat
 	if len(upd) > 0 {
 		if err := s.db.Model(cat).Updates(upd).Error; err != nil {
 			failInternal(c, err)
@@ -106,6 +108,13 @@ func (s *Server) updateCategory(c *gin.Context) {
 		}
 	}
 	s.db.First(cat, cat.ID)
+	var ch changeList
+	ch.add("title", before.Title, cat.Title)
+	ch.add("responsible", before.Responsible, cat.Responsible)
+	ch.add("criteria", before.Criteria, cat.Criteria)
+	if len(ch) > 0 {
+		s.record(c, "category.update", "project", cat.ProjectID, "category", cat.ID, "title", cat.Title, "changes", ch.String())
+	}
 	s.changed(cat.ProjectID)
 	c.JSON(http.StatusOK, categoryDTO{ID: cat.ID, Title: cat.Title, Position: cat.Position,
 		Responsible: cat.Responsible, Criteria: cat.Criteria, Items: []itemDTO{}})
@@ -131,6 +140,7 @@ func (s *Server) deleteCategory(c *gin.Context) {
 	for _, id := range itemIDs {
 		s.media.ItemDeleted(id)
 	}
+	s.record(c, "category.delete", "project", cat.ProjectID, "category", cat.ID, "title", cat.Title, "songs", len(itemIDs))
 	s.changed(cat.ProjectID)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -157,6 +167,7 @@ func (s *Server) orderCategories(c *gin.Context) {
 		failInternal(c, err)
 		return
 	}
+	s.record(c, "category.reorder", "project", pid)
 	s.changed(pid)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
